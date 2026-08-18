@@ -188,3 +188,25 @@ cargo test
 
 The crate carries no comments: the code is meant to read without them, and the
 prose that explains a decision goes in a commit message or in this README.
+
+### Building a release binary
+
+rustc records the absolute path of every source file it compiles into the
+binary's panic metadata, which on a normal machine means the builder's home
+directory and username travel with every download. Published binaries are built
+with those paths remapped:
+
+```powershell
+$flags = @(
+    "--remap-path-prefix=$env:USERPROFILE\.cargo=/cargo",
+    "--remap-path-prefix=$env:USERPROFILE=/home/build",
+    "--remap-path-prefix=$PWD=/src"
+)
+$env:CARGO_ENCODED_RUSTFLAGS = ($flags -join "`u{001f}")
+cargo build --release -p kebacc-switch
+```
+
+`CARGO_ENCODED_RUSTFLAGS` rather than `RUSTFLAGS` because the separator is a
+unit separator instead of a space, so a checkout in a directory whose name has
+spaces in it still works. The flags are not in a committed `config.toml`: they
+name a path that is different on every machine.

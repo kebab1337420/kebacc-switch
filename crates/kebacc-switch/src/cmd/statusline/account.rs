@@ -11,8 +11,6 @@ const POOLS: [&str; 2] = ["claude", "codex"];
 
 pub struct Glyphs {
     pub arrow: &'static str,
-    pub fresh: &'static str,
-    pub step: &'static str,
     pub wait: &'static str,
     pub cut: &'static str,
     pub sep: &'static str,
@@ -21,8 +19,6 @@ pub struct Glyphs {
 
 const UNICODE: Glyphs = Glyphs {
     arrow: "⇄",
-    fresh: "↑",
-    step: "→",
     wait: "⏳",
     cut: "…",
     sep: " · ",
@@ -31,8 +27,6 @@ const UNICODE: Glyphs = Glyphs {
 
 const ASCII: Glyphs = Glyphs {
     arrow: "<>",
-    fresh: "^",
-    step: "->",
     wait: "~",
     cut: "..",
     sep: " | ",
@@ -314,13 +308,6 @@ fn auto_label(scope: Option<&str>) -> String {
         dim
     };
     format!("{} {}", paint("auto"), named.join(&dim("+")))
-}
-
-pub fn update_note() -> Option<String> {
-    let dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
-    let (from, to, _) = crate::cmd::update::last(&dir)?;
-    let g = glyphs();
-    Some(green(&format!("{}{from}{}{to}", g.fresh, g.step)))
 }
 
 pub fn version() -> String {

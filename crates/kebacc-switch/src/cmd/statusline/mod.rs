@@ -110,7 +110,6 @@ fn build(payload: &Value) -> String {
         ],
         account::segments(payload)
             .into_iter()
-            .chain(account::update_note())
             .chain(std::iter::once(account::version()))
             .map(Some)
             .collect(),

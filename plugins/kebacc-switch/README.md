@@ -52,8 +52,10 @@ and puts it in place. That happens in a detached process, so the
 session does not wait for it, and the running command finishes on the binary it
 started on — the new one is used from the next start.
 
-It says so afterwards rather than before: the status line shows `^0.1.0->0.2.0`
-for a day after an update, and `doctor` reports the same thing.
+It says so afterwards rather than before, and only when asked: `doctor` reports
+the last update for a day after it happened. The status line stays out of it —
+the version it prints is the one you are running, which is the thing worth
+seeing every second.
 
 ```
 kebacc-switch update -Check   # exit 10 when a newer release exists

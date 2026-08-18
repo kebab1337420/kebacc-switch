@@ -70,7 +70,7 @@ if ($Tag) {
 # Asked for by name rather than by a URL built from the tag, so a release that
 # was published without its binary says so instead of handing back GitHub's
 # 404 page.
-$download = @($release.assets | Where-Object { $_.name -eq $asset }) | Select-Object -First 1
+$download = @(@($release.assets) | Where-Object { $_.name -eq $asset }) | Select-Object -First 1
 if (-not $download) {
     Say "$Tag has no $asset attached to it, so there is nothing to install." Red
     Say "Releases: https://github.com/$repo/releases" Yellow
@@ -91,8 +91,12 @@ try {
         Select-Object -First 1
     if (-not $installer) { throw "The $Tag source archive has no plugins/kebacc-switch/install.ps1." }
 
+    # Fetched through the API rather than through browser_download_url, which is
+    # served by a cache that keeps handing out the previous file for a while
+    # after an asset is replaced. The API URL answers with the current one.
     $exe = Join-Path $work 'kebacc-switch.exe'
-    Invoke-WebRequest -Uri $download.browser_download_url -OutFile $exe -Headers @{ 'User-Agent' = 'kebacc-switch-bootstrap' }
+    $binaryHeaders = @{ 'User-Agent' = 'kebacc-switch-bootstrap'; 'Accept' = 'application/octet-stream' }
+    Invoke-WebRequest -Uri $download.url -OutFile $exe -Headers $binaryHeaders
     if ((Get-Item -LiteralPath $exe).Length -lt 100KB) { throw "$asset came back too small to be the binary." }
 
     # ValueFromRemainingArguments hands back a single empty string when there is

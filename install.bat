@@ -9,6 +9,10 @@ rem The script comes from the release rather than from the branch: raw file URLs
 rem are served through a cache that can be minutes behind, and an installer that
 rem sometimes runs yesterday's code is worse than one pinned to a release.
 rem
+rem The script is fetched through the API rather than through the plain download
+rem URL, which is served by a cache that keeps handing out the previous file for
+rem a while after an asset is replaced.
+rem
 rem Invoke-RestMethod writes a JSON array as one object rather than as a stream
 rem of them, so the answer is assigned before it is filtered. Filtering it inline
 rem matches nothing once the repository has more than one release.
@@ -27,7 +31,7 @@ set "PS=powershell"
 where pwsh >nul 2>&1 && set "PS=pwsh"
 
 echo Fetching the installer...
-"%PS%" -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; try{[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12}catch{}; $h=@{'User-Agent'='kebacc-switch-installer'}; $answer=Invoke-RestMethod ('https://api.github.com/repos/'+$env:REPO+'/releases') -Headers $h; $r=@(@($answer) | Where-Object {-not $_.draft}) | Select-Object -First 1; if(-not $r){throw 'No release has been published yet.'}; $a=@($r.assets | Where-Object {$_.name -eq 'bootstrap.ps1'}) | Select-Object -First 1; if(-not $a){throw ($r.tag_name+' has no bootstrap.ps1 attached to it.')}; Invoke-WebRequest $a.browser_download_url -OutFile $env:SCRIPT -Headers $h"
+"%PS%" -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; try{[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12}catch{}; $h=@{'User-Agent'='kebacc-switch-installer'}; $answer=Invoke-RestMethod ('https://api.github.com/repos/'+$env:REPO+'/releases') -Headers $h; $r=@(@($answer) | Where-Object {-not $_.draft}) | Select-Object -First 1; if(-not $r){throw 'No release has been published yet.'}; $a=@(@($r.assets) | Where-Object {$_.name -eq 'bootstrap.ps1'}) | Select-Object -First 1; if(-not $a){throw ($r.tag_name+' has no bootstrap.ps1 attached to it.')}; Invoke-WebRequest $a.url -OutFile $env:SCRIPT -Headers @{'User-Agent'='kebacc-switch-installer';'Accept'='application/octet-stream'}"
 if errorlevel 1 goto failed
 
 echo Saved to %SCRIPT%

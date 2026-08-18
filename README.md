@@ -39,8 +39,12 @@ it. It fetches the published binary and the plugin, installs both, and needs no
 clone, no Rust and no administrator. Arguments go through to the installer, so
 `install.bat -StatusLine -AutoSwitch all` works.
 
-`plugins/kebacc-switch/bootstrap.ps1` is what it runs, and reads as a plain
-script if you would rather see it before running anything.
+`bootstrap.ps1`, published beside it on the same release, is what it runs — a
+plain script you can read first if you would rather see what it does. It comes
+from the release rather than from the branch on purpose: raw file URLs are
+served through a cache that can be minutes behind, and an installer that
+sometimes runs yesterday's code is worse than one pinned to a release. A change
+to it therefore needs a fresh upload to reach anyone.
 
 ### From source
 

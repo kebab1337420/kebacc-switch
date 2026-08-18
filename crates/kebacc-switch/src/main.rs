@@ -32,7 +32,7 @@ fn usage_text() {
     println!("  statusline  the Claude Code status line, from a payload on stdin");
     println!("  update      install the newest release (-Check to only say whether one is out)");
     println!();
-    println!("  list -Countdown   both quota windows of every saved account, with their resets");
+    println!("  list -Countdown   both quota windows of every saved account, with their resets (-Refresh reads them again first)");
     println!("  auto -Midtask     auto from a tool-use hook, at most once every few minutes");
     println!();
     println!("  Updates install themselves once a day at session start. KEBACC_SWITCH_UPDATE=off stops that.");
@@ -131,7 +131,7 @@ fn run(command: &str, id: ProviderId, options: &Options) -> i32 {
     let provider = provider::spec(id);
     match command {
         "add" => cmd::add::run(&provider, options),
-        "list" if options.countdown => cmd::countdown::run(&provider),
+        "list" if options.countdown => cmd::countdown::run(&provider, options),
         "list" => cmd::list::run(&provider, options),
         "switch" => cmd::switch::run(&provider, options),
         "remove" => cmd::remove::run(&provider, options),

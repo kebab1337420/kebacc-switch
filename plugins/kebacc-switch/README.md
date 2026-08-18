@@ -102,8 +102,9 @@ promise room it has not seen.
 It never asks the network: the live window comes from the payload Claude Code
 hands it, the rest from the cache the switcher already wrote.
 
-Inside Claude Code the same things are slash commands: `/account-add-claude`,
-`/account-list-all`, `/account-auto-switch-all`, and so on.
+Inside Claude Code the same things are slash commands, all under one prefix:
+`/kebacc-add-claude`, `/kebacc-list-all`, `/kebacc-auto-all`, and so on. The
+root [`README.md`](../../README.md) lists every one of them.
 
 ## Where things are kept
 
@@ -112,7 +113,7 @@ Inside Claude Code the same things are slash commands: `/account-add-claude`,
 | `~/.claude-tools/` | the binary, and `.version` |
 | `~/.kebacc-switch-accounts/` | saved Claude Code logins |
 | `~/.kebacc-switch-codex-accounts/` | saved Codex logins |
-| `~/.claude/commands/account-*.md` | the slash commands |
+| `~/.claude/commands/kebacc-*.md` | the slash commands |
 | `~/.kebacc-switch/` | stamps, locks and caches (`KEBACC_SWITCH_STATE_DIR` moves it) |
 
 One saved login is one `.json` file. The dotfiles beside them are the pool's own

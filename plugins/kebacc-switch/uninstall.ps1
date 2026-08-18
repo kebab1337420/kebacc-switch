@@ -29,7 +29,11 @@ if (Test-Path -LiteralPath $ToolsDir) {
 $commands = Join-Path $claude 'commands'
 if (Test-Path -LiteralPath $commands) {
     $gone = @(Get-ChildItem -LiteralPath $commands -File |
-        Where-Object { $_.Name -like 'account-*.md' -or $_.Name -like 'claude-account-*.md' })
+        Where-Object {
+            $_.Name -like 'kebacc-*.md' -or
+            $_.Name -like 'account-*.md' -or
+            $_.Name -like 'claude-account-*.md'
+        })
     $gone | Remove-Item -Force
     if ($gone.Count) { Say "Removed $($gone.Count) slash command(s)" Green }
 }

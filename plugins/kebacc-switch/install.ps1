@@ -93,9 +93,12 @@ $commandSource = Join-Path $source 'commands'
 $commandTarget = Join-Path $claude 'commands'
 if (Test-Path -LiteralPath $commandSource) {
     if (-not (Test-Path -LiteralPath $commandTarget)) { New-Item -ItemType Directory -Path $commandTarget -Force | Out-Null }
-    # Names from earlier versions, so an update does not leave two of each.
-    Get-ChildItem -LiteralPath $commandTarget -Filter 'claude-account-*.md' -File -ErrorAction Ignore | Remove-Item -Force
-    Get-ChildItem -LiteralPath $commandTarget -Filter 'account-*.md' -File -ErrorAction Ignore | Remove-Item -Force
+    # Names from earlier versions, so an update does not leave two of each. The
+    # current 'kebacc-' names go too: a command dropped from a release has to
+    # disappear from the list rather than linger with nothing behind it.
+    foreach ($stale in @('claude-account-*.md', 'account-*.md', 'kebacc-*.md')) {
+        Get-ChildItem -LiteralPath $commandTarget -Filter $stale -File -ErrorAction Ignore | Remove-Item -Force
+    }
     # Two commands from a version that had a thread relauncher. Nothing answers
     # them any more, and they still show up in the slash command list.
     foreach ($dead in @('refresh-a.md', 'refresh-t.md')) {

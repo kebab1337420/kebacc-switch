@@ -111,6 +111,14 @@ if (Test-Path -LiteralPath $commandSource) {
     Say "Installed the slash commands into $commandTarget" Green
 }
 
+# The Codex switcher is built from another branch, so its installer ships here
+# rather than being downloadable on its own. /kebacc-install-codex runs it from
+# $ToolsDir, which is the only path a slash command can count on.
+$codexInstaller = Join-Path $PSScriptRoot 'install-codex.ps1'
+if (Test-Path -LiteralPath $codexInstaller) {
+    Copy-Item -LiteralPath $codexInstaller -Destination (Join-Path $ToolsDir 'install-codex.ps1') -Force
+}
+
 Set-Content -LiteralPath (Join-Path $ToolsDir '.version') -Value $version -NoNewline -Encoding utf8
 
 # The binary is asked what it is rather than taken on trust. A -Binary pointing

@@ -124,6 +124,7 @@ counterparts.
 | --- | --- |
 | `/kebacc-doctor` | check the install, the pool and the seals |
 | `/kebacc-update` | install the newest release |
+| `/kebacc-install-codex` | build and install the Codex plugin from its branch |
 
 ---
 
@@ -153,7 +154,9 @@ Codex lives in its own plugin, `kebacc-codex`, on the `Codex` branch of this
 repository. It has its own binary, its own pool and its own slash commands
 (`/kebacc-add-codex`, `/kebacc-list-codex`, `/kebacc-switch-codex`,
 `/kebacc-remove-codex`, `/kebacc-auto-codex`), and the two install side by
-side.
+side. There is no published release for it, so `/kebacc-install-codex` clones
+the branch, builds it with cargo and runs its installer; the same thing by hand
+is `plugins/kebacc-switch/install-codex.ps1`.
 
 **Exit codes**
 

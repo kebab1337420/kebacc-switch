@@ -8,6 +8,7 @@ pub const CRED_SWAP: &str = "KebaccSwitchCredentialSwap";
 pub const USAGE_CACHE: &str = "KebaccSwitchUsageCache";
 pub const UPDATE: &str = "KebaccSwitchUpdate";
 pub const MIDTASK: &str = "KebaccSwitchMidtask";
+pub const REFRESH: &str = "KebaccSwitchRefresh";
 
 const WAIT: Duration = Duration::from_secs(15);
 #[cfg(not(windows))]

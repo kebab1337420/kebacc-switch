@@ -158,6 +158,56 @@ pub fn current_email() -> Option<String> {
     jsonio::str_of(&identity, "emailAddress").map(|email| email.to_lowercase())
 }
 
+const LIVE_CACHE_SECONDS: i64 = 60;
+
+/// The live session already knows the current account's quota. Write it into
+/// that account's snapshot so the other sessions, and the next draw, see it
+/// without asking the API.
+pub fn remember_live(payload: &Value) {
+    let Some(limits) = payload.get("rate_limits").filter(|v| !v.is_null()) else {
+        return;
+    };
+    let live = usage::Usage {
+        five_hour: window_of(limits, "five_hour"),
+        seven_day: window_of(limits, "seven_day"),
+    };
+    if !live.known() {
+        return;
+    }
+    let Some(email) = current_email() else {
+        return;
+    };
+    let Some(snapshots) = pool::plain_snapshots(&store()) else {
+        return;
+    };
+    for (file, snapshot) in &snapshots {
+        let mine = jsonio::str_of(snapshot, "email")
+            .map(|saved| saved.to_lowercase())
+            .is_some_and(|saved| saved == email);
+        if !mine {
+            continue;
+        }
+        if usage::cache_older_than(snapshot.get("usageCache"), LIVE_CACHE_SECONDS) {
+            usage::save_cache(file, &live);
+        }
+        return;
+    }
+}
+
+/// `resets_at` comes as epoch seconds in some payloads, as a date in others.
+fn window_of(limits: &Value, name: &str) -> Option<usage::Window> {
+    let window = limits.get(name).filter(|v| !v.is_null())?;
+    let mut window = window.clone();
+    if let Some(seconds) = window.get("resets_at").and_then(Value::as_f64) {
+        let at = chrono::DateTime::from_timestamp(seconds as i64, 0)?;
+        jsonio::map_mut(&mut window).insert(
+            "resets_at".into(),
+            Value::String(at.to_rfc3339_opts(chrono::SecondsFormat::Micros, true)),
+        );
+    }
+    usage::window_from(Some(&window))
+}
+
 struct Seats {
     free: usize,
     unknown: usize,

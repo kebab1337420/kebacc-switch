@@ -77,13 +77,21 @@ session that is already running.
 
 ## Switching without being asked
 
+`kebacc-switch arm -Provider claude|codex|all|off` is what arms it after the
+fact — it writes that hook and nothing else, never touching the account in use.
+The slash commands `/kebacc-auto-claude`, `/kebacc-auto-codex`,
+`/kebacc-auto-all` and `/kebacc-auto-toggle` are that command; switching the
+live login is `/kebacc-switch-claude` and `/kebacc-switch-codex`, and nothing
+else.
+
 `install.ps1 -AutoSwitch all` writes one `SessionStart` hook into
 `~/.claude/settings.json`, so `auto` runs once as each Claude Code session
 starts: a session that would have opened on a capped account opens on a free one
 instead. `-AutoSwitch claude` or `-AutoSwitch codex` narrows it to one pool.
 Installing again replaces that hook rather than adding a second one, and
-`uninstall.ps1` takes it back out. Nothing runs in the background — no watcher,
-no daemon; between two sessions nothing of this is running.
+`uninstall.ps1` takes it back out. There is no watcher and no daemon: apart from
+the short refresh the status line spawns for itself, between two sessions
+nothing of this is running.
 
 ## The status line
 
@@ -101,8 +109,20 @@ An account whose quota has never been read counts as neither free nor capped: it
 is added on as `+1?` rather than folded into the free count, so the line does not
 promise room it has not seen.
 
-It never asks the network: the live window comes from the payload Claude Code
-hands it, the rest from the cache the switcher already wrote.
+The line it draws is never the network's answer: the live window comes from the
+payload Claude Code hands it, the rest from the cache the switcher already
+wrote. It keeps that cache moving on its own. The live window is written back
+into the account's snapshot, so the other sessions see it without asking
+anything, and when a saved account's numbers are more than five minutes old the
+draw spawns `kebacc-switch refresh` behind itself — a detached process that
+reads the quotas, writes them to the snapshots and exits. The draw itself does
+not wait for it; the fresher numbers land on the next one. One refresh at a
+time, machine-wide, however many sessions are open.
+
+| Variable | What |
+| --- | --- |
+| `KEBACC_SWITCH_STATUSLINE_REFRESH=off` | never spawn the background refresh; the numbers then only move when you run a command |
+| `KEBACC_SWITCH_REFRESH_INTERVAL_MS` | how old the numbers may get before a draw refreshes them, in milliseconds (default 300000) |
 
 Inside Claude Code the same things are slash commands, all under one prefix:
 `/kebacc-add-claude`, `/kebacc-list-all`, `/kebacc-auto-all`, and so on. The

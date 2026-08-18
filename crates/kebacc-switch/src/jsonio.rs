@@ -31,6 +31,7 @@ pub fn write_text(path: &Path, text: &str) -> std::io::Result<()> {
         return Err(problem);
     }
     crate::provider::protect_new_file(path);
+    crate::pool::forget_snapshots();
     Ok(())
 }
 

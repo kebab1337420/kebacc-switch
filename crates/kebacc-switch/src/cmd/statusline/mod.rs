@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 const TAIL_BYTES: u64 = 192 * 1024;
+const DIRTY_CACHE_SECONDS: u64 = 20;
 const TAIL_LINES: usize = 400;
 const CONTEXT_LIMIT: f64 = 200_000.0;
 const CONTEXT_LIMIT_LARGE: f64 = 1_000_000.0;
@@ -19,6 +20,8 @@ pub fn run() -> i32 {
     let mut stdin = String::new();
     let _ = std::io::stdin().read_to_string(&mut stdin);
     let payload: Value = serde_json::from_str(&stdin).unwrap_or(Value::Null);
+    account::remember_live(&payload);
+    crate::cmd::refresh::nudge();
     let line = build(&payload);
     if !line.is_empty() {
         print!("{line}");
@@ -401,13 +404,16 @@ impl Line<'_> {
 
     fn git(&self) -> Option<String> {
         let (git_dir, root) = git_dir(&self.cwd)?;
-        let head = std::fs::read_to_string(git_dir.join("HEAD")).ok()?;
+        let mut file = std::fs::File::open(git_dir.join("HEAD")).ok()?;
+        let moved = file.metadata().ok().and_then(|meta| meta.modified().ok());
+        let mut head = String::new();
+        file.read_to_string(&mut head).ok()?;
         let head = head.trim();
         let branch = match head.strip_prefix("ref: refs/heads/") {
             Some(name) => name.to_string(),
             None => head.chars().take(7).collect(),
         };
-        let mark = match dirty(&root) {
+        let mark = match dirty(&root, &git_dir, moved) {
             Some(true) => red("*"),
             _ => String::new(),
         };
@@ -483,20 +489,21 @@ fn read_tail(path: &Path) -> Option<Vec<String>> {
 }
 
 fn git_dir(from: &Path) -> Option<(PathBuf, PathBuf)> {
-    let mut at = from.canonicalize().unwrap_or_else(|_| from.to_path_buf());
+    let mut at = from.to_path_buf();
     loop {
         let candidate = at.join(".git");
-        if candidate.is_dir() {
-            return Some((candidate, at));
-        }
-        if candidate.is_file() {
-            if let Some(pointed) = std::fs::read_to_string(&candidate)
-                .ok()
-                .and_then(|text| pointer(&text))
-            {
-                let pointed = at.join(pointed);
-                return Some((pointed.canonicalize().unwrap_or(pointed), at));
+        match std::fs::metadata(&candidate) {
+            Ok(found) if found.is_dir() => return Some((candidate, at)),
+            Ok(_) => {
+                if let Some(pointed) = std::fs::read_to_string(&candidate)
+                    .ok()
+                    .and_then(|text| pointer(&text))
+                {
+                    let pointed = at.join(pointed);
+                    return Some((pointed, at));
+                }
             }
+            Err(_) => {}
         }
         at = at.parent()?.to_path_buf();
     }
@@ -508,22 +515,38 @@ fn pointer(text: &str) -> Option<PathBuf> {
         .map(|rest| PathBuf::from(rest.trim()))
 }
 
-fn dirty(root: &Path) -> Option<bool> {
+fn dirty(root: &Path, git_dir: &Path, head_moved: Option<std::time::SystemTime>) -> Option<bool> {
     let cache = dirty_cache_file(root);
-    if let Some(fresh) = std::fs::metadata(&cache)
-        .and_then(|meta| meta.modified())
-        .ok()
-        .and_then(|at| at.elapsed().ok())
-        .filter(|age| age.as_secs() < 5)
-        .and(std::fs::read_to_string(&cache).ok())
-    {
-        return match fresh.trim() {
-            "1" => Some(true),
-            "0" => Some(false),
-            _ => None,
-        };
+    let known = std::fs::metadata(&cache).ok().map(|meta| {
+        let seen = meta.modified().ok();
+        let age = seen
+            .and_then(|at| at.elapsed().ok())
+            .map(|age| age.as_secs())
+            .unwrap_or(u64::MAX);
+        let staged = seen.is_some_and(|at| {
+            head_moved.is_some_and(|moved| moved > at) || touched_since(git_dir, at)
+        });
+        (meta.len() > 0, age < DIRTY_CACHE_SECONDS && !staged)
+    });
+    if let Some((dirty, true)) = known {
+        return Some(dirty);
     }
-    let out = std::process::Command::new("git")
+    ask_git(&cache, root);
+    known.map(|(dirty, _)| dirty)
+}
+
+fn touched_since(git_dir: &Path, at: std::time::SystemTime) -> bool {
+    std::fs::metadata(git_dir.join("index"))
+        .and_then(|meta| meta.modified())
+        .is_ok_and(|changed| changed > at)
+}
+
+fn ask_git(cache: &Path, root: &Path) {
+    let Ok(file) = std::fs::File::create(cache) else {
+        return;
+    };
+    let mut command = std::process::Command::new("git");
+    command
         .args([
             "--no-optional-locks",
             "status",
@@ -531,15 +554,11 @@ fn dirty(root: &Path) -> Option<bool> {
             "--untracked-files=no",
         ])
         .current_dir(root)
-        .stderr(std::process::Stdio::null())
-        .output()
-        .ok()?;
-    if !out.status.success() {
-        return None;
-    }
-    let dirty = !String::from_utf8_lossy(&out.stdout).trim().is_empty();
-    let _ = std::fs::write(&cache, if dirty { "1" } else { "0" });
-    Some(dirty)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::from(file))
+        .stderr(std::process::Stdio::null());
+    crate::cmd::midtask::detach(&mut command);
+    let _ = command.spawn();
 }
 
 fn dirty_cache_file(root: &Path) -> PathBuf {
@@ -552,5 +571,5 @@ fn dirty_cache_file(root: &Path) -> PathBuf {
         .take(16)
         .map(|byte| format!("{byte:02x}"))
         .collect::<String>();
-    crate::provider::state_dir().join(format!("git-{key}.txt"))
+    crate::provider::state_dir().join(format!("gitstat-{key}.txt"))
 }

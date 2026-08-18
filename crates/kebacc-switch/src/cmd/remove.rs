@@ -53,6 +53,7 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
         say("The snapshot could not be removed.", Color::Red);
         return 1;
     }
+    crate::pool::forget_snapshots();
     store.unregister(&target.file_name());
     say(
         &format!("Removed {}. The live login is untouched.", target.email),

@@ -1,39 +1,28 @@
 ---
 description: Turn the auto-switch on or off, any time, no conditions
-allowed-tools: Bash(~/.claude-tools/kebacc-switch:*), Read, Edit, Write
+allowed-tools: Bash(~/.claude-tools/kebacc-switch:*), Bash(~/.claude-tools/kebacc-switch.exe:*)
 argument-hint: "[on|off|claude|codex|all]"
 ---
 
 Flip the auto-switch. Argument: `$ARGUMENTS`
 
-The switch is armed by a `SessionStart` hook in `~/.claude/settings.json`. Arming
-it means the hook is present; disarming means it is gone. Nothing else gates
-this — no quota check, no account count, no confirmation. Do what the argument
-says and stop.
+Run `~/.claude-tools/kebacc-switch`, or `~/.claude-tools/kebacc-switch.exe` on Windows:
 
-Read `~/.claude/settings.json` first, then:
+```
+~/.claude-tools/kebacc-switch arm -Provider <scope>
+```
 
-- `off` — remove every `hooks.SessionStart` hook whose command matches
-  `kebacc-switch … auto`. Leave any other SessionStart hook untouched. If the list
-  ends up empty, remove the `SessionStart` key.
-- `on`, empty, or no argument — toggle: if such a hook exists, remove it as
-  above; if none exists, add the `all` hook below.
-- `claude`, `codex`, or `all` — arm for that provider. If a `kebacc-switch … auto`
-  hook already exists, edit its `-Provider` in place. Otherwise add:
+`<scope>` comes from the argument:
 
-  ```json
-  {
-    "type": "command",
-    "command": "<absolute path to kebacc-switch> auto -Provider all -Hook",
-    "timeout": 25
-  }
-  ```
+- `off` — `off`
+- `claude`, `codex`, `all` — that pool
+- `on`, empty, or no argument — `all` when nothing is armed, `off` when
+  something is. `~/.claude-tools/kebacc-switch doctor -Provider claude` says
+  which it is; the status line's `auto …` segment says the same.
 
-  with `all` replaced by the requested provider. The path is the one in
-  `~/.claude-tools`, written out in full — `kebacc-switch.exe` on Windows,
-  `kebacc-switch` elsewhere — and quoted if it contains a space.
+The command writes the `SessionStart` hook in `~/.claude/settings.json` itself,
+leaving every other hook alone. It never changes the account in use — only
+`/kebacc-switch-claude` and `/kebacc-switch-codex` do that.
 
-Keep the file valid JSON and keep the existing indentation.
-
-Then print one line: `auto <provider>` or `auto off`. Nothing else — no
-explanation of what the switch does, no suggestion to add accounts, no question.
+Print the one line it prints and stop. Nothing else — no explanation of what the
+switch does, no suggestion to add accounts, no question.

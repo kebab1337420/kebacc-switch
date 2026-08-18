@@ -103,10 +103,14 @@ nothing to pass and nothing else to run.
 
 | Command | What it does |
 | --- | --- |
-| `/kebacc-auto-all` | check both providers, switch only where there is no room left |
+| `/kebacc-auto-all` | arm the session-start auto-switch for both pools |
 | `/kebacc-auto-claude` | the same, Claude Code only |
 | `/kebacc-auto-codex` | the same, Codex only |
 | `/kebacc-auto-toggle` | arm or disarm the session-start hook |
+
+None of these four changes the account in use. Arming decides what the *next*
+sessions open on. Only `/kebacc-switch-claude` and `/kebacc-switch-codex` move
+the login you are on right now.
 
 ### Upkeep
 
@@ -126,7 +130,10 @@ kebacc-switch add     -Provider claude               # save the current login
 kebacc-switch list    -Provider all -Refresh -Countdown
 kebacc-switch switch  -Provider claude -Email you@example.com
 kebacc-switch auto    -Provider all                  # switch only if capped
+kebacc-switch arm     -Provider claude                # arm the session-start switch, change nothing now
+kebacc-switch arm     -Provider off                   # disarm it
 kebacc-switch doctor  -Provider all
+kebacc-switch refresh -Provider all                  # re-read the quotas, print nothing
 kebacc-switch update
 ```
 

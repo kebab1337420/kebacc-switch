@@ -342,7 +342,7 @@ fn missing_path(command: &str) -> Option<String> {
         .find(|word| !Path::new(word).exists())
 }
 
-fn quoted_words(command: &str) -> Vec<String> {
+pub fn quoted_words(command: &str) -> Vec<String> {
     let mut words = Vec::new();
     let mut word = String::new();
     let mut quote: Option<char> = None;

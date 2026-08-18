@@ -28,12 +28,17 @@ fn usage_text() {
     println!("  switch      change which saved login the CLI uses");
     println!("  remove      forget a saved login");
     println!("  auto        switch only if the one in use is out of quota");
+    println!(
+        "  arm         arm or disarm the session-start auto-switch, without switching anything now"
+    );
     println!("  doctor      check the install and the pool (-Protect, -Adopt, -Clean to repair, -Rollback to undo a switch)");
     println!("  statusline  the Claude Code status line, from a payload on stdin");
     println!("  update      install the newest release (-Check to only say whether one is out)");
     println!();
     println!("  list -Countdown   both quota windows of every saved account, with their resets (-Refresh reads them again first)");
     println!("  auto -Midtask     auto from a tool-use hook, at most once every few minutes");
+    println!("  refresh           read every saved account's quota again, silently (the status line spawns this)");
+    println!("  arm -Provider claude|codex|all|off   arm the session-start auto-switch for that pool, or turn it off");
     println!();
     println!("  Updates install themselves once a day at session start. KEBACC_SWITCH_UPDATE=off stops that.");
 }
@@ -62,7 +67,16 @@ fn dispatch(args: &[String]) -> i32 {
     };
     if !matches!(
         command,
-        "add" | "list" | "switch" | "remove" | "auto" | "doctor" | "statusline" | "update"
+        "add"
+            | "list"
+            | "switch"
+            | "remove"
+            | "auto"
+            | "doctor"
+            | "statusline"
+            | "update"
+            | "refresh"
+            | "arm"
     ) {
         say(&format!("Unknown command '{command}'."), Color::Red);
         usage_text();
@@ -73,13 +87,21 @@ fn dispatch(args: &[String]) -> i32 {
         return cmd::statusline::run();
     }
 
-    let (wanted, options) = match parse(&args[1..]) {
+    let (wanted, mut options) = match parse(&args[1..]) {
         Ok(parsed) => parsed,
         Err(problem) => {
             say(&problem, Color::Red);
             return 64;
         }
     };
+
+    if command == "arm" {
+        return cmd::arm::run(&wanted, options.quiet);
+    }
+
+    if command == "refresh" {
+        options.quiet = true;
+    }
 
     if command == "update" {
         return cmd::update::run(&options);
@@ -99,7 +121,7 @@ fn dispatch(args: &[String]) -> i32 {
             .into_iter()
             .enumerate()
         {
-            if index > 0 {
+            if index > 0 && !options.quiet {
                 println!();
             }
             let code = run(command, id, &options);
@@ -136,6 +158,7 @@ fn run(command: &str, id: ProviderId, options: &Options) -> i32 {
         "switch" => cmd::switch::run(&provider, options),
         "remove" => cmd::remove::run(&provider, options),
         "auto" => cmd::auto::run(&provider, options),
+        "refresh" => cmd::refresh::run(&provider, options),
         _ => cmd::doctor::run(&provider, options),
     }
 }

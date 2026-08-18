@@ -7,7 +7,9 @@ use base64::Engine;
 use hmac::{Hmac, Mac};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
 const POOL_VERSION: u64 = 2;
 
@@ -345,7 +347,33 @@ pub fn snapshot_files(store: &Path) -> Vec<PathBuf> {
     }
 }
 
-pub fn plain_snapshots(store: &Path) -> Option<Vec<(PathBuf, Value)>> {
+type Snapshots = Option<Vec<(PathBuf, Value)>>;
+
+fn snapshot_memo() -> &'static Mutex<HashMap<PathBuf, Snapshots>> {
+    static MEMO: OnceLock<Mutex<HashMap<PathBuf, Snapshots>>> = OnceLock::new();
+    MEMO.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+pub fn forget_snapshots() {
+    if let Ok(mut memo) = snapshot_memo().lock() {
+        memo.clear();
+    }
+}
+
+pub fn plain_snapshots(store: &Path) -> Snapshots {
+    if let Ok(memo) = snapshot_memo().lock() {
+        if let Some(known) = memo.get(store) {
+            return known.clone();
+        }
+    }
+    let fresh = read_plain_snapshots(store);
+    if let Ok(mut memo) = snapshot_memo().lock() {
+        memo.insert(store.to_path_buf(), fresh.clone());
+    }
+    fresh
+}
+
+fn read_plain_snapshots(store: &Path) -> Snapshots {
     if !store.is_dir() {
         return None;
     }

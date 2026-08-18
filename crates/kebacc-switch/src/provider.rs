@@ -1,4 +1,5 @@
 use std::path::{Path, PathBuf};
+use std::sync::OnceLock;
 
 pub const PROVIDER_IDS: [&str; 2] = ["claude", "codex"];
 
@@ -30,7 +31,8 @@ pub struct Provider {
 }
 
 pub fn home() -> PathBuf {
-    match dirs::home_dir() {
+    static HOME: OnceLock<PathBuf> = OnceLock::new();
+    HOME.get_or_init(|| match dirs::home_dir() {
         Some(dir) if !dir.as_os_str().is_empty() => dir,
         _ => {
             eprintln!(
@@ -38,25 +40,32 @@ pub fn home() -> PathBuf {
             );
             std::process::exit(1);
         }
-    }
+    })
+    .clone()
 }
 
 pub fn state_dir() -> PathBuf {
-    let dir = match std::env::var_os("KEBACC_SWITCH_STATE_DIR") {
-        Some(d) if !d.is_empty() => PathBuf::from(d),
-        _ => home().join(".kebacc-switch"),
-    };
-    if std::fs::create_dir_all(&dir).is_ok() {
-        protect_dir(&dir);
-    }
-    dir
+    static DIR: OnceLock<PathBuf> = OnceLock::new();
+    DIR.get_or_init(|| {
+        let dir = match std::env::var_os("KEBACC_SWITCH_STATE_DIR") {
+            Some(d) if !d.is_empty() => PathBuf::from(d),
+            _ => home().join(".kebacc-switch"),
+        };
+        if std::fs::create_dir_all(&dir).is_ok() {
+            protect_dir(&dir);
+        }
+        dir
+    })
+    .clone()
 }
 
 pub fn claude_config_dir() -> PathBuf {
-    match std::env::var_os("CLAUDE_CONFIG_DIR") {
+    static DIR: OnceLock<PathBuf> = OnceLock::new();
+    DIR.get_or_init(|| match std::env::var_os("CLAUDE_CONFIG_DIR") {
         Some(dir) if !dir.is_empty() => PathBuf::from(dir),
         _ => home().join(".claude"),
-    }
+    })
+    .clone()
 }
 
 pub fn is_all(id: &str) -> bool {

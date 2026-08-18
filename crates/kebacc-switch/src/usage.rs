@@ -298,6 +298,16 @@ pub fn cache_rolled_over(cache: Option<&Value>) -> bool {
         .any(|window| window.stale())
 }
 
+pub fn cache_older_than(cache: Option<&Value>, seconds: i64) -> bool {
+    let Some(at) = cache
+        .and_then(|c| jsonio::str_of(c, "checkedAt"))
+        .and_then(|at| parse_time(&at))
+    else {
+        return true;
+    };
+    (Utc::now() - at).num_seconds() >= seconds
+}
+
 fn cache_fresh(cache: Option<&Value>) -> bool {
     let Some(at) = cache.and_then(|c| jsonio::str_of(c, "checkedAt")) else {
         return false;
@@ -308,7 +318,7 @@ fn cache_fresh(cache: Option<&Value>) -> bool {
     (Utc::now() - at).num_seconds() < CACHE_SECONDS
 }
 
-fn save_cache(file: &Path, usage: &Usage) {
+pub fn save_cache(file: &Path, usage: &Usage) {
     let _ = lock::locked(lock::USAGE_CACHE, || {
         let Some(mut snapshot) = jsonio::read(file) else {
             return;

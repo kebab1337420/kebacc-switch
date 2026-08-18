@@ -1,3 +1,4 @@
+use std::io::{IsTerminal, Read};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -5,6 +6,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const DEFAULT_INTERVAL_MS: u128 = 5 * 60 * 1000;
 
 pub fn run(provider: &str) -> i32 {
+    if about_us(&hook_payload()) {
+        return 0;
+    }
     let claimed = crate::lock::locked(crate::lock::MIDTASK, || {
         let stamp = stamp_file();
         if !due(&stamp) {
@@ -17,6 +21,28 @@ pub fn run(provider: &str) -> i32 {
         spawn(provider);
     }
     0
+}
+
+/// The `PreToolUse` payload, when Claude Code is the one calling.
+fn hook_payload() -> String {
+    let stdin = std::io::stdin();
+    if stdin.is_terminal() {
+        return String::new();
+    }
+    let mut text = String::new();
+    let _ = stdin.lock().read_to_string(&mut text);
+    text
+}
+
+/// A tool call that is itself a switcher command — listing the accounts,
+/// checking the install — must not switch the account under the user's feet.
+/// They asked to look, not to move.
+fn about_us(payload: &str) -> bool {
+    let payload = payload.to_lowercase();
+    let Some(input) = payload.find("\"tool_input\"") else {
+        return false;
+    };
+    payload[input..].contains("kebacc")
 }
 
 fn stamp_file() -> PathBuf {
@@ -73,3 +99,34 @@ pub fn detach(command: &mut Command) {
 
 #[cfg(not(windows))]
 pub fn detach(_command: &mut Command) {}
+
+#[cfg(test)]
+mod tests {
+    use super::about_us;
+
+    #[test]
+    fn a_switcher_command_is_left_alone() {
+        assert!(about_us(
+            r#"{"tool_name":"Bash","tool_input":{"command":"~/.claude-tools/kebacc-switch list -Provider all"}}"#
+        ));
+    }
+
+    #[test]
+    fn an_unrelated_command_still_arms_the_check() {
+        assert!(!about_us(
+            r#"{"tool_name":"Bash","tool_input":{"command":"cargo build"}}"#
+        ));
+    }
+
+    #[test]
+    fn our_own_name_outside_the_tool_input_does_not_count() {
+        assert!(!about_us(
+            r#"{"cwd":"C:/Users/x/dev/kebacc-switch","tool_input":{"command":"cargo test"}}"#
+        ));
+    }
+
+    #[test]
+    fn no_payload_at_all_arms_the_check() {
+        assert!(!about_us(""));
+    }
+}

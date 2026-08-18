@@ -83,6 +83,7 @@ Everything the plugin installs lives under the `/kebacc-` prefix.
 | Command | What it does |
 | --- | --- |
 | `/kebacc-list-claude` | the saved Claude Code accounts |
+| `/kebacc-list-all` | the same, plus the Codex pool when kebacc-codex is installed |
 
 A list command always asks the API rather than reading the cache, and always
 prints both quota windows with the time left until each one resets. There is
@@ -99,6 +100,7 @@ nothing to pass and nothing else to run.
 | Command | What it does |
 | --- | --- |
 | `/kebacc-auto-claude` | arm the session-start auto-switch |
+| `/kebacc-auto-all` | the same, plus the Codex pool when kebacc-codex is installed |
 | `/kebacc-auto-toggle` | arm or disarm the session-start hook |
 
 Neither of these changes the account in use. Arming decides what the *next*

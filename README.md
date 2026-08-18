@@ -86,7 +86,6 @@ nothing to pass and nothing else to run.
 | `/kebacc-auto-claude` | the same, Claude Code only |
 | `/kebacc-auto-codex` | the same, Codex only |
 | `/kebacc-auto-toggle` | arm or disarm the session-start hook |
-| `/kebacc-auto-off` | disarm it, no questions |
 
 ### Upkeep
 

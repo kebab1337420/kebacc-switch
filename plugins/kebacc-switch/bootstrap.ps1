@@ -92,7 +92,25 @@ try {
     # ValueFromRemainingArguments hands back a single empty string when there is
     # nothing left over, and splatting that fills install.ps1's first positional
     # parameter with it.
-    $passthru = @(@($InstallerArgs) | Where-Object { $_ })
+    #
+    # The leftovers are rebuilt into a hashtable rather than splatted as an
+    # array: an array splat binds every element by position, so a `-Name value`
+    # pair typed on the command line arrives as two positional arguments and
+    # lands on whichever parameters happen to sit at those positions. A name
+    # whose next leftover is another name is a switch and is passed as true.
+    $passthru = @{}
+    $left = @(@($InstallerArgs) | Where-Object { $_ })
+    for ($i = 0; $i -lt $left.Count; $i++) {
+        $item = $left[$i]
+        if ($item -notlike '-*') { throw "Unexpected argument '$item'. Pass installer options by name, as -StatusLine or -AutoSwitch all." }
+        $name = $item.TrimStart('-')
+        if ($i + 1 -lt $left.Count -and $left[$i + 1] -notlike '-*') {
+            $passthru[$name] = $left[$i + 1]
+            $i++
+        } else {
+            $passthru[$name] = $true
+        }
+    }
     & $installer.FullName -Binary $exe @passthru
     if ($LASTEXITCODE) { exit $LASTEXITCODE }
     exit 0

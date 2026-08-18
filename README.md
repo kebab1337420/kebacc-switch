@@ -83,7 +83,7 @@ Everything the plugin installs lives under the `/kebacc-` prefix.
 | Command | What it does |
 | --- | --- |
 | `/kebacc-list-claude` | the saved Claude Code accounts |
-| `/kebacc-list-all` | the same, plus the Codex pool when kebacc-codex is installed |
+| `/kebacc-list-all` | the same, plus every other pool installed beside it |
 
 A list command always asks the API rather than reading the cache, and always
 prints both quota windows with the time left until each one resets. There is
@@ -100,12 +100,23 @@ nothing to pass and nothing else to run.
 | Command | What it does |
 | --- | --- |
 | `/kebacc-auto-claude` | arm the session-start auto-switch |
-| `/kebacc-auto-all` | the same, plus the Codex pool when kebacc-codex is installed |
+| `/kebacc-auto-all` | the same, plus every other pool installed beside it |
 | `/kebacc-auto-toggle` | arm or disarm the session-start hook |
 
 Neither of these changes the account in use. Arming decides what the *next*
 sessions open on. Only `/kebacc-switch-claude` moves the login you are on right
 now.
+
+### The `-all` commands
+
+`/kebacc-list-all` and `/kebacc-auto-all` are the only two commands that reach
+past the Claude Code pool. Each provider lives on its own branch of this
+repository and installs its own plugin, its own binary and its own pool —
+Codex on the `Codex` branch today, and whatever follows it on a branch of its
+own. The `-all` commands walk whichever of those are installed on the machine
+and do the same work on each, so a second provider costs no second command.
+With only this plugin installed they behave exactly like their `-claude`
+counterparts.
 
 ### Upkeep
 

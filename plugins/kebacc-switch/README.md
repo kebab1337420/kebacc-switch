@@ -133,7 +133,6 @@ root [`README.md`](../../README.md) lists every one of them.
 | `~/.claude-tools/` | the binary, and `.version` |
 | `~/.kebacc-switch-accounts/` | saved Claude Code logins |
 | `~/.claude/commands/kebacc-*.md` | the slash commands |
-| `~/.claude-tools/install-codex.ps1` | installs the Codex plugin from its branch |
 | `~/.kebacc-switch/` | stamps, locks and caches (`KEBACC_SWITCH_STATE_DIR` moves it) |
 
 One saved login is one `.json` file. The dotfiles beside them are the pool's own

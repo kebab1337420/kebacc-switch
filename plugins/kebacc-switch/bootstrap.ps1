@@ -45,11 +45,17 @@ $headers = @{
 # /releases/latest skips prereleases, and this project has been one so far, so
 # the whole list is read and the newest published entry taken from it.
 try {
-    $releases = @(Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases" -Headers $headers)
+    $answer = Invoke-RestMethod -Uri "https://api.github.com/repos/$repo/releases" -Headers $headers
 } catch {
     Say "GitHub did not answer: $($_.Exception.Message)" Red
     exit 1
 }
+# Invoke-RestMethod writes a JSON array as one object rather than as a stream of
+# them, so @(Invoke-RestMethod ...) is an array holding an array, and filtering
+# it matches nothing. Assigning first and wrapping after unrolls it properly.
+# With a single release the difference does not show; from the second one on,
+# every lookup comes back empty.
+$releases = @($answer)
 $published = @($releases | Where-Object { -not $_.draft })
 if ($Tag) {
     $release = @($published | Where-Object { $_.tag_name -eq $Tag }) | Select-Object -First 1

@@ -96,8 +96,11 @@ if (Test-Path -LiteralPath $commandSource) {
     # Names from earlier versions, so an update does not leave two of each. The
     # current 'kebacc-' names go too: a command dropped from a release has to
     # disappear from the list rather than linger with nothing behind it.
+    # The codex ones are left alone: they belong to kebacc-codex, which installs
+    # into this same directory.
     foreach ($stale in @('claude-account-*.md', 'account-*.md', 'kebacc-*.md')) {
-        Get-ChildItem -LiteralPath $commandTarget -Filter $stale -File -ErrorAction Ignore | Remove-Item -Force
+        Get-ChildItem -LiteralPath $commandTarget -Filter $stale -File -ErrorAction Ignore |
+            Where-Object { $_.Name -notlike '*codex*' } | Remove-Item -Force
     }
     # Two commands from a version that had a thread relauncher. Nothing answers
     # them any more, and they still show up in the slash command list.

@@ -28,11 +28,13 @@ if (Test-Path -LiteralPath $ToolsDir) {
 
 $commands = Join-Path $claude 'commands'
 if (Test-Path -LiteralPath $commands) {
+    # The codex commands are kebacc-codex's, and it has an uninstaller of its own.
     $gone = @(Get-ChildItem -LiteralPath $commands -File |
         Where-Object {
-            $_.Name -like 'kebacc-*.md' -or
-            $_.Name -like 'account-*.md' -or
-            $_.Name -like 'claude-account-*.md'
+            ($_.Name -like 'kebacc-*.md' -or
+             $_.Name -like 'account-*.md' -or
+             $_.Name -like 'claude-account-*.md') -and
+            $_.Name -notlike '*codex*'
         })
     $gone | Remove-Item -Force
     if ($gone.Count) { Say "Removed $($gone.Count) slash command(s)" Green }

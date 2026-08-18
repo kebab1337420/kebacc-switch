@@ -323,6 +323,10 @@ pub fn update_note() -> Option<String> {
     Some(green(&format!("{}{from}{}{to}", g.fresh, g.step)))
 }
 
+pub fn version() -> String {
+    dim(&format!("v{}", env!("CARGO_PKG_VERSION")))
+}
+
 pub fn segments(payload: &Value) -> Vec<String> {
     if std::env::var("KEBACC_SWITCH_STATUSLINE").is_ok_and(|flag| off(&flag)) {
         return Vec::new();

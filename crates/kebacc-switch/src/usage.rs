@@ -98,13 +98,6 @@ impl Usage {
         self.five_hour.is_some() || self.seven_day.is_some()
     }
 
-    pub fn stale(&self) -> bool {
-        [&self.five_hour, &self.seven_day]
-            .iter()
-            .filter_map(|window| window.as_ref())
-            .any(|window| window.stale())
-    }
-
     pub fn usable(&self) -> bool {
         !caps()
             .iter()
@@ -169,7 +162,7 @@ pub fn wait_text(at: DateTime<Utc>) -> String {
     format!("{}d{:02}h", hours / 24, hours % 24)
 }
 
-fn window_from(value: Option<&Value>) -> Option<Window> {
+pub fn window_from(value: Option<&Value>) -> Option<Window> {
     let value = value.filter(|v| !v.is_null())?;
     let pct = ["used_percent", "utilization", "used_percentage"]
         .iter()
@@ -187,6 +180,17 @@ fn window_from(value: Option<&Value>) -> Option<Window> {
     Some(Window {
         utilization: (pct * 10.0).round() / 10.0,
         resets_at: resets,
+    })
+}
+
+pub fn window_now(value: Option<&Value>) -> Option<Window> {
+    let window = window_from(value)?;
+    if !window.stale() {
+        return Some(window);
+    }
+    Some(Window {
+        utilization: 0.0,
+        resets_at: None,
     })
 }
 
@@ -278,9 +282,19 @@ pub fn fetch(provider: &Provider, token: Option<&str>) -> Option<Usage> {
 pub fn from_cache(cache: Option<&Value>) -> Option<Usage> {
     let cache = cache?;
     Some(Usage {
-        five_hour: window_from(cache.get("five_hour")),
-        seven_day: window_from(cache.get("seven_day")),
+        five_hour: window_now(cache.get("five_hour")),
+        seven_day: window_now(cache.get("seven_day")),
     })
+}
+
+pub fn cache_rolled_over(cache: Option<&Value>) -> bool {
+    let Some(cache) = cache else {
+        return false;
+    };
+    ["five_hour", "seven_day"]
+        .iter()
+        .filter_map(|name| window_from(cache.get(*name)))
+        .any(|window| window.stale())
 }
 
 fn cache_fresh(cache: Option<&Value>) -> bool {
@@ -319,7 +333,7 @@ fn save_cache(file: &Path, usage: &Usage) {
 pub fn for_entry(provider: &Provider, entry: &Entry, force: bool) -> Option<Usage> {
     let cached = from_cache(entry.cache.as_ref());
     let usable_cache =
-        !force && cache_fresh(entry.cache.as_ref()) && !cached.as_ref().is_some_and(Usage::stale);
+        !force && cache_fresh(entry.cache.as_ref()) && !cache_rolled_over(entry.cache.as_ref());
     if usable_cache {
         return cached;
     }
@@ -357,12 +371,29 @@ fn live_token(provider: &Provider, entry: &Entry) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{window_from, Usage};
+    use super::{cache_rolled_over, window_from, window_now, Usage};
     use serde_json::json;
 
     #[test]
     fn a_window_without_a_percentage_is_unknown_not_empty() {
         assert!(window_from(Some(&json!({ "resets_at": "2026-01-01T00:00:00Z" }))).is_none());
+    }
+
+    #[test]
+    fn a_window_past_its_reset_reads_as_empty() {
+        let closed = json!({ "utilization": 100.0, "resets_at": "2020-01-01T00:00:00Z" });
+        let window = window_now(Some(&closed)).expect("a window");
+        assert_eq!(window.utilization, 0.0);
+        assert!(window.resets_at.is_none());
+        assert!(cache_rolled_over(Some(&json!({ "five_hour": closed }))));
+    }
+
+    #[test]
+    fn a_window_still_open_is_left_alone() {
+        let open = json!({ "utilization": 80.0, "resets_at": "2099-01-01T00:00:00Z" });
+        let window = window_now(Some(&open)).expect("a window");
+        assert_eq!(window.utilization, 80.0);
+        assert!(!cache_rolled_over(Some(&json!({ "five_hour": open }))));
     }
 
     #[test]

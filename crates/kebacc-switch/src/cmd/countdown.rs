@@ -87,15 +87,11 @@ pub fn run(provider: &Provider, opts: &super::Options) -> i32 {
 }
 
 fn cell(cache: Option<&Value>, key: &str, label: &str) -> String {
-    let Some(window) = cache.and_then(|c| c.get(key)).filter(|w| w.is_object()) else {
+    let Some(window) = usage::window_now(cache.and_then(|c| c.get(key))) else {
         return format!("{label} —");
     };
-    let pct = match window.get("utilization").and_then(Value::as_f64) {
-        Some(value) => format!("{:>3}", value.round() as i64),
-        None => "  ?".to_string(),
-    };
-    let back = match jsonio::str_of(window, "resets_at").and_then(|at| usage::parse_time(&at)) {
-        Some(at) if at <= Utc::now() => " window already reset, number is stale".to_string(),
+    let pct = format!("{:>3}", window.utilization.round() as i64);
+    let back = match window.resets() {
         Some(at) => format!(" resets in {}", wait_text(at)),
         None => String::new(),
     };

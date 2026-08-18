@@ -1,6 +1,6 @@
 [package]
 name = "kebacc-switch"
-version = "5.1.0"
+version = "0.1.0"
 description = "Several Claude Code and Codex logins on one machine, and one command to move between them"
 edition = "2021"
 

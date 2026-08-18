@@ -9,7 +9,7 @@ between them when the one you are on runs out of quota.**
 
 [![release](https://img.shields.io/github/v/release/kebab1337420/kebacc-switch?sort=semver&label=release)](https://github.com/kebab1337420/kebacc-switch/releases)
 [![rust](https://img.shields.io/badge/rust-2021-orange)](https://www.rust-lang.org)
-[![platform](https://img.shields.io/badge/platform-windows%20%C2%B7%20macos%20%C2%B7%20linux-blue)](#build-and-install)
+[![platform](https://img.shields.io/badge/platform-windows%20%C2%B7%20macos%20%C2%B7%20linux-blue)](#install)
 
 </div>
 
@@ -29,12 +29,27 @@ plugins/kebacc-switch/   the installer, the hooks and the slash commands
 
 ---
 
-## Build and install
+## Install
+
+### Windows, no toolchain
+
+Download **`install.bat`** from the
+[latest release](https://github.com/kebab1337420/kebacc-switch/releases) and run
+it. It fetches the published binary and the plugin, installs both, and needs no
+clone, no Rust and no administrator. Arguments go through to the installer, so
+`install.bat -StatusLine -AutoSwitch all` works.
+
+`plugins/kebacc-switch/bootstrap.ps1` is what it runs, and reads as a plain
+script if you would rather see it before running anything.
+
+### From source
 
 ```sh
 cargo build --release
 pwsh -NoProfile -File plugins/kebacc-switch/install.ps1
 ```
+
+This is the only route on macOS and Linux — no binary is published for them yet.
 
 The installer copies `target/release/kebacc-switch` into `~/.claude-tools`, then
 writes the hooks, the status line and the slash commands into your Claude Code

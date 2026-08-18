@@ -89,8 +89,13 @@ try {
     Invoke-WebRequest -Uri $download.browser_download_url -OutFile $exe -Headers @{ 'User-Agent' = 'kebacc-switch-bootstrap' }
     if ((Get-Item -LiteralPath $exe).Length -lt 100KB) { throw "$asset came back too small to be the binary." }
 
-    & $installer.FullName -Binary $exe @InstallerArgs
-    exit $LASTEXITCODE
+    # ValueFromRemainingArguments hands back a single empty string when there is
+    # nothing left over, and splatting that fills install.ps1's first positional
+    # parameter with it.
+    $passthru = @(@($InstallerArgs) | Where-Object { $_ })
+    & $installer.FullName -Binary $exe @passthru
+    if ($LASTEXITCODE) { exit $LASTEXITCODE }
+    exit 0
 } finally {
     Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue
 }

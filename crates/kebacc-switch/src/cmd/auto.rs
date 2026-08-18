@@ -83,15 +83,22 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
     let mut soonest: Option<DateTime<Utc>> = None;
     let mut fallback: Vec<(&crate::pool::Entry, Option<usage::Usage>)> = Vec::new();
 
-    for entry in &pool {
-        if current.is_some_and(|c| c.file == entry.file) {
-            continue;
-        }
-        if entry.trust == Trust::Changed || entry.creds.is_none() {
-            continue;
-        }
+    let candidates: Vec<&crate::pool::Entry> = pool
+        .iter()
+        .filter(|entry| !current.is_some_and(|c| c.file == entry.file))
+        .filter(|entry| entry.trust != Trust::Changed && entry.creds.is_some())
+        .collect();
+    let readings = if started.elapsed() >= BUDGET {
+        candidates
+            .iter()
+            .map(|entry| usage::from_cache(entry.cache.as_ref()))
+            .collect()
+    } else {
+        usage::for_entries(provider, &candidates, false)
+    };
 
-        let usage = read(entry);
+    for (index, entry) in candidates.iter().enumerate() {
+        let usage = readings.get(index).cloned().flatten();
         let readable = usage.as_ref().is_some_and(usage::Usage::known);
         if readable && !usage.as_ref().is_some_and(usage::Usage::usable) {
             if let Some(ready) = usage.as_ref().and_then(usage::Usage::ready_at) {

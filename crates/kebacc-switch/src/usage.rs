@@ -54,6 +54,7 @@ pub fn now_iso() -> String {
     Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Micros, true)
 }
 
+#[derive(Clone)]
 pub struct Usage {
     pub five_hour: Option<Window>,
     pub seven_day: Option<Window>,
@@ -328,6 +329,28 @@ fn save_cache(file: &Path, usage: &Usage) {
         jsonio::map_mut(&mut snapshot).insert("usageCache".into(), Value::Object(cache));
         let _ = jsonio::write(file, &snapshot);
     });
+}
+
+const REFRESH_LANES: usize = 8;
+
+pub fn for_entries(provider: &Provider, entries: &[&Entry], force: bool) -> Vec<Option<Usage>> {
+    if entries.len() < 2 {
+        return entries
+            .iter()
+            .map(|entry| for_entry(provider, entry, force))
+            .collect();
+    }
+    let mut out = Vec::with_capacity(entries.len());
+    for lane in entries.chunks(REFRESH_LANES) {
+        std::thread::scope(|scope| {
+            let running: Vec<_> = lane
+                .iter()
+                .map(|entry| scope.spawn(move || for_entry(provider, entry, force)))
+                .collect();
+            out.extend(running.into_iter().map(|task| task.join().unwrap_or(None)));
+        });
+    }
+    out
 }
 
 pub fn for_entry(provider: &Provider, entry: &Entry, force: bool) -> Option<Usage> {

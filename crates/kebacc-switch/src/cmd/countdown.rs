@@ -11,9 +11,9 @@ const WINDOWS: [(&str, &str); 2] = [("five_hour", "5h"), ("seven_day", "7d")];
 
 pub fn run(provider: &Provider, opts: &super::Options) -> i32 {
     if opts.refresh {
-        for entry in &pool::Pool::new(provider).entries() {
-            let _ = usage::for_entry(provider, entry, true);
-        }
+        let entries = pool::Pool::new(provider).entries();
+        let all: Vec<&_> = entries.iter().collect();
+        usage::for_entries(provider, &all, true);
     }
     say(
         &format!("{} — {}", provider.label, provider.store.display()),

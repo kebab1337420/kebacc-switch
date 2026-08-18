@@ -154,9 +154,8 @@ fn short_local(email: Option<&str>, max: usize) -> Option<String> {
 }
 
 pub fn current_email() -> Option<String> {
-    let config = jsonio::read(&provider::spec(ProviderId::Claude).config_file())?;
-    let account = config.get("oauthAccount")?;
-    jsonio::str_of(account, "emailAddress").map(|email| email.to_lowercase())
+    let identity = crate::live::identity(&provider::spec(ProviderId::Claude))?;
+    jsonio::str_of(&identity, "emailAddress").map(|email| email.to_lowercase())
 }
 
 struct Seats {
@@ -311,7 +310,9 @@ fn auto_label(scope: Option<&str>) -> String {
 }
 
 pub fn version() -> String {
-    dim(&format!("v{}", env!("CARGO_PKG_VERSION")))
+    let (shown, mismatch) = crate::cmd::update::shown_version();
+    let mark = if mismatch { "!" } else { "" };
+    dim(&format!("v{shown}{mark}"))
 }
 
 pub fn segments(payload: &Value) -> Vec<String> {

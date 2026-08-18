@@ -110,6 +110,24 @@ if (Test-Path -LiteralPath $commandSource) {
 
 Set-Content -LiteralPath (Join-Path $ToolsDir '.version') -Value $version -NoNewline -Encoding utf8
 
+# The binary is asked what it is rather than taken on trust. A -Binary pointing
+# at an older build, a truncated download and an executable a security product
+# refuses to start all fail here, where the message can say so, instead of
+# quietly disagreeing with the plugin for days.
+$reported = $null
+try { $reported = (& $entry --version 2>$null | Select-Object -First 1) } catch {}
+if (-not $reported) {
+    Say "Copied the binary, but $entry would not run." Red
+    Say 'The slash commands are in place; the settings were left untouched.' Yellow
+    Say 'A security product blocking it is the usual reason. Allow it, then run this again.' Yellow
+    exit 1
+}
+$reportedVersion = ($reported -split '\s+' | Where-Object { $_ })[-1]
+if ($reportedVersion -ne $version) {
+    Say "The binary reports $reportedVersion and the plugin here is $version." Yellow
+    Say 'The status line will show the plugin version with a ! until the two match.' Yellow
+}
+
 # `kebacc-switch` as a shell function rather than a directory on the PATH: it is one
 # line to add, and an earlier version of this toolkit put a `claude.exe` shim on
 # the PATH that nobody wants back.

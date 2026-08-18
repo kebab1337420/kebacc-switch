@@ -2,7 +2,7 @@ use std::path::{Path, PathBuf};
 
 pub const PROVIDER_IDS: [&str; 2] = ["claude", "codex"];
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum ProviderId {
     Claude,
     Codex,

@@ -51,6 +51,16 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
         ),
         Color::Dim,
     );
+    if let Some(marker) = super::update::installed_version() {
+        if marker != env!("CARGO_PKG_VERSION") {
+            say(
+                &format!(
+                    "  ! the plugin next to this binary says {marker}: reinstall so the two match"
+                ),
+                Color::Yellow,
+            );
+        }
+    }
 
     if opts.rollback {
         let Some(backup) = live::newest_backup(provider) else {

@@ -129,6 +129,28 @@ pub fn version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
+pub fn installed_version() -> Option<String> {
+    let dir = std::env::current_exe().ok()?;
+    let text = std::fs::read_to_string(dir.parent()?.join(".version")).ok()?;
+    let text = text.trim();
+    let sane = !text.is_empty()
+        && text.len() <= 32
+        && text
+            .chars()
+            .all(|c| c.is_ascii_alphanumeric() || matches!(c, '.' | '-' | '+'));
+    sane.then(|| text.to_string())
+}
+
+pub fn shown_version() -> (String, bool) {
+    match installed_version() {
+        Some(marker) => {
+            let same = marker == version();
+            (marker, !same)
+        }
+        None => (version(), false),
+    }
+}
+
 fn off() -> bool {
     std::env::var("KEBACC_SWITCH_UPDATE")
         .is_ok_and(|flag| matches!(flag.trim().to_lowercase().as_str(), "0" | "off" | "no"))

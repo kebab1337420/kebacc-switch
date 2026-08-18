@@ -24,15 +24,18 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
     }
 
     let current = super::current(provider, &pool);
+    let refreshed = opts.refresh.then(|| {
+        let all: Vec<&_> = pool.iter().collect();
+        usage::for_entries(provider, &all, true)
+    });
     let mut problem = false;
 
-    for entry in &pool {
+    for (index, entry) in pool.iter().enumerate() {
         let live = current.is_some_and(|c| c.file == entry.file);
         let mark = if live { '*' } else { ' ' };
-        let usage = if opts.refresh {
-            usage::for_entry(provider, entry, true)
-        } else {
-            usage::from_cache(entry.cache.as_ref())
+        let usage = match &refreshed {
+            Some(all) => all.get(index).cloned().flatten(),
+            None => usage::from_cache(entry.cache.as_ref()),
         };
         let pair = match &usage {
             Some(usage) => usage.as_pair(),

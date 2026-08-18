@@ -1,11 +1,48 @@
 use crate::jsonio;
 use crate::lock;
 use crate::provider::Provider;
+use crate::provider::ProviderId;
 use crate::seal;
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::{Mutex, OnceLock};
+
+type Memo<T> = OnceLock<Mutex<HashMap<ProviderId, Option<T>>>>;
+
+fn creds_memo() -> &'static Mutex<HashMap<ProviderId, Option<String>>> {
+    static MEMO: Memo<String> = OnceLock::new();
+    MEMO.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+fn identity_memo() -> &'static Mutex<HashMap<ProviderId, Option<Value>>> {
+    static MEMO: Memo<Value> = OnceLock::new();
+    MEMO.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+pub fn forget(provider: &Provider) {
+    if let Ok(mut memo) = creds_memo().lock() {
+        memo.remove(&provider.id);
+    }
+    if let Ok(mut memo) = identity_memo().lock() {
+        memo.remove(&provider.id);
+    }
+}
 
 pub fn creds_raw(provider: &Provider) -> Option<String> {
+    if let Ok(memo) = creds_memo().lock() {
+        if let Some(hit) = memo.get(&provider.id) {
+            return hit.clone();
+        }
+    }
+    let fresh = read_creds_raw(provider);
+    if let Ok(mut memo) = creds_memo().lock() {
+        memo.insert(provider.id, fresh.clone());
+    }
+    fresh
+}
+
+fn read_creds_raw(provider: &Provider) -> Option<String> {
     let file = provider.cred_file();
     if provider.uses_keychain && !file.exists() {
         let service = provider.keychain_service?;
@@ -22,6 +59,7 @@ pub fn creds_raw(provider: &Provider) -> Option<String> {
 }
 
 pub fn set_creds_raw(provider: &Provider, raw: &str) -> std::io::Result<()> {
+    forget(provider);
     let file = provider.cred_file();
     jsonio::write_text(&file, raw)?;
     if provider.uses_keychain {
@@ -50,6 +88,19 @@ pub fn set_creds_raw(provider: &Provider, raw: &str) -> std::io::Result<()> {
 }
 
 pub fn identity(provider: &Provider) -> Option<Value> {
+    if let Ok(memo) = identity_memo().lock() {
+        if let Some(hit) = memo.get(&provider.id) {
+            return hit.clone();
+        }
+    }
+    let fresh = read_identity(provider);
+    if let Ok(mut memo) = identity_memo().lock() {
+        memo.insert(provider.id, fresh.clone());
+    }
+    fresh
+}
+
+fn read_identity(provider: &Provider) -> Option<Value> {
     if provider.is_codex() {
         let raw = creds_raw(provider)?;
         let creds: Value = serde_json::from_str(&raw).ok()?;
@@ -78,6 +129,7 @@ pub fn codex_identity(creds: &Value) -> Option<Value> {
 }
 
 pub fn set_identity(provider: &Provider, identity: &Value) {
+    forget(provider);
     if provider.is_codex() {
         return;
     }

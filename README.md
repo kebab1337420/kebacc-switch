@@ -1,6 +1,9 @@
 <div align="center">
+**(MADE FOR BOITE : https://github.com/beboite/boite)**
+**(MADE FOR BOITE : https://github.com/beboite/boite)**
+**(MADE FOR BOITE : https://github.com/beboite/boite)**
 
-# kebacc-switch
+# kebacc-switch 
 
 **Several Claude Code and Codex logins on one machine, and one command to move
 between them when the one you are on runs out of quota.**

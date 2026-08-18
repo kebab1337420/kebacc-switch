@@ -49,19 +49,17 @@ pub fn nudge() {
 
 fn stale() -> bool {
     let window = (interval_ms() / 1000) as i64;
-    for id in [ProviderId::Claude, ProviderId::Codex] {
-        let store = provider::spec(id).store;
-        let Some(snapshots) = crate::pool::plain_snapshots(&store) else {
+    let store = provider::spec(ProviderId::Claude).store;
+    let Some(snapshots) = crate::pool::plain_snapshots(&store) else {
+        return false;
+    };
+    for (_, snapshot) in &snapshots {
+        if snapshot.is_null() {
             continue;
-        };
-        for (_, snapshot) in &snapshots {
-            if snapshot.is_null() {
-                continue;
-            }
-            let cache = snapshot.get("usageCache");
-            if usage::cache_older_than(cache, window) || usage::cache_rolled_over(cache) {
-                return true;
-            }
+        }
+        let cache = snapshot.get("usageCache");
+        if usage::cache_older_than(cache, window) || usage::cache_rolled_over(cache) {
+            return true;
         }
     }
     false
@@ -103,7 +101,7 @@ fn spawn() {
     };
     let mut command = Command::new(exe);
     command
-        .args(["refresh", "-Provider", "all", "-Spawned"])
+        .args(["refresh", "-Spawned"])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());

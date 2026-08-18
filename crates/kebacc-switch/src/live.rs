@@ -101,38 +101,12 @@ pub fn identity(provider: &Provider) -> Option<Value> {
 }
 
 fn read_identity(provider: &Provider) -> Option<Value> {
-    if provider.is_codex() {
-        let raw = creds_raw(provider)?;
-        let creds: Value = serde_json::from_str(&raw).ok()?;
-        return codex_identity(&creds);
-    }
     let config = jsonio::read(&provider.config_file())?;
     jsonio::obj(&config, "oauthAccount")
 }
 
-pub fn codex_identity(creds: &Value) -> Option<Value> {
-    let tokens = creds.get("tokens").filter(|v| !v.is_null())?;
-    let mut email = None;
-    let mut uuid = jsonio::str_of(tokens, "account_id");
-    if let Some(claims) = jsonio::str_of(tokens, "id_token").and_then(|t| jsonio::jwt_payload(&t)) {
-        email = jsonio::str_of(&claims, "email");
-        if uuid.is_none() {
-            uuid = claims
-                .get("https://api.openai.com/auth")
-                .and_then(|auth| jsonio::str_of(auth, "chatgpt_account_id"));
-        }
-    }
-    if email.is_none() && uuid.is_none() {
-        return None;
-    }
-    Some(json!({ "emailAddress": email, "accountUuid": uuid }))
-}
-
 pub fn set_identity(provider: &Provider, identity: &Value) {
     forget(provider);
-    if provider.is_codex() {
-        return;
-    }
     let path = provider.config_file();
     if !path.exists() {
         let _ = jsonio::write(&path, &json!({ "oauthAccount": identity }));

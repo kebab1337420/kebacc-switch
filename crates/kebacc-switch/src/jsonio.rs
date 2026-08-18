@@ -101,24 +101,6 @@ pub fn map_mut(value: &mut Value) -> &mut Map<String, Value> {
     value.as_object_mut().expect("just made it an object")
 }
 
-pub fn jwt_payload(token: &str) -> Option<Value> {
-    use base64::engine::general_purpose::STANDARD_NO_PAD as B64;
-    use base64::Engine;
-
-    let part = token.split('.').nth(1)?;
-    let body: String = part
-        .chars()
-        .map(|c| match c {
-            '-' => '+',
-            '_' => '/',
-            other => other,
-        })
-        .filter(|c| *c != '=')
-        .collect();
-    let bytes = B64.decode(body.as_bytes()).ok()?;
-    serde_json::from_slice(&bytes).ok()
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

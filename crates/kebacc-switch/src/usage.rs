@@ -195,14 +195,8 @@ pub fn window_now(value: Option<&Value>) -> Option<Window> {
     })
 }
 
-pub fn access_token(provider: &Provider, creds_raw: Option<&str>) -> Option<String> {
+pub fn access_token(creds_raw: Option<&str>) -> Option<String> {
     let creds: Value = serde_json::from_str(creds_raw?).ok()?;
-    if provider.is_codex() {
-        if let Some(tokens) = creds.get("tokens").filter(|v| !v.is_null()) {
-            return jsonio::str_of(tokens, "access_token");
-        }
-        return jsonio::str_of(&creds, "OPENAI_API_KEY");
-    }
     let oauth = creds.get("claudeAiOauth").filter(|v| !v.is_null())?;
     jsonio::str_of(oauth, "accessToken")
 }
@@ -250,22 +244,8 @@ fn get_json(url: &str, headers: &[(&str, &str)]) -> Option<Value> {
     }
 }
 
-pub fn fetch(provider: &Provider, token: Option<&str>) -> Option<Usage> {
+pub fn fetch(token: Option<&str>) -> Option<Usage> {
     let token = token?;
-    if provider.is_codex() {
-        if token.starts_with("sk-") {
-            return None;
-        }
-        let raw = get_json(
-            "https://chatgpt.com/backend-api/codex/usage",
-            &[("Authorization", &format!("Bearer {token}"))],
-        )?;
-        let limits = raw.get("rate_limits").filter(|v| !v.is_null())?;
-        return Some(Usage {
-            five_hour: window_from(limits.get("primary")),
-            seven_day: window_from(limits.get("secondary")),
-        });
-    }
     let raw = get_json(
         "https://api.anthropic.com/api/oauth/usage",
         &[
@@ -376,15 +356,15 @@ pub fn for_entry(provider: &Provider, entry: &Entry, force: bool) -> Option<Usag
             "{}: live token {}, snapshot token {}",
             entry.email,
             if live.is_some() { "yes" } else { "no" },
-            if access_token(provider, entry.creds.as_deref()).is_some() {
+            if access_token(entry.creds.as_deref()).is_some() {
                 "yes"
             } else {
                 "no"
             }
         ));
     }
-    let token = live.or_else(|| access_token(provider, entry.creds.as_deref()));
-    match fetch(provider, token.as_deref()) {
+    let token = live.or_else(|| access_token(entry.creds.as_deref()));
+    match fetch(token.as_deref()) {
         Some(usage) => {
             save_cache(&entry.file, &usage);
             Some(usage)
@@ -399,7 +379,7 @@ fn live_token(provider: &Provider, entry: &Entry) -> Option<String> {
     if email != entry.email.to_lowercase() {
         return None;
     }
-    access_token(provider, crate::live::creds_raw(provider).as_deref())
+    access_token(crate::live::creds_raw(provider).as_deref())
 }
 
 #[cfg(test)]

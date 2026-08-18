@@ -4,7 +4,7 @@
 
 # kebacc-switch 
 
-**Several Claude Code and Codex logins on one machine, and one command to move
+**Several Claude Code logins on one machine, and one command to move
 between them when the one you are on runs out of quota.**
 
 [![release](https://img.shields.io/github/v/release/kebab1337420/kebacc-switch?sort=semver&label=release)](https://github.com/kebab1337420/kebacc-switch/releases)
@@ -76,17 +76,13 @@ Everything the plugin installs lives under the `/kebacc-` prefix.
 | Command | What it does |
 | --- | --- |
 | `/kebacc-add-claude` | save the Claude Code login you are on right now |
-| `/kebacc-add-codex` | save the Codex login you are on right now |
 | `/kebacc-remove-claude` | forget a saved Claude Code account |
-| `/kebacc-remove-codex` | forget a saved Codex account |
 
 ### Looking
 
 | Command | What it does |
 | --- | --- |
-| `/kebacc-list-all` | every saved account, both providers |
 | `/kebacc-list-claude` | the saved Claude Code accounts |
-| `/kebacc-list-codex` | the saved Codex accounts |
 
 A list command always asks the API rather than reading the cache, and always
 prints both quota windows with the time left until each one resets. There is
@@ -97,20 +93,17 @@ nothing to pass and nothing else to run.
 | Command | What it does |
 | --- | --- |
 | `/kebacc-switch-claude` | change which saved Claude Code login the CLI uses |
-| `/kebacc-switch-codex` | change which saved Codex login the CLI uses |
 
 ### The auto-switch
 
 | Command | What it does |
 | --- | --- |
-| `/kebacc-auto-all` | arm the session-start auto-switch for both pools |
-| `/kebacc-auto-claude` | the same, Claude Code only |
-| `/kebacc-auto-codex` | the same, Codex only |
+| `/kebacc-auto-claude` | arm the session-start auto-switch |
 | `/kebacc-auto-toggle` | arm or disarm the session-start hook |
 
-None of these four changes the account in use. Arming decides what the *next*
-sessions open on. Only `/kebacc-switch-claude` and `/kebacc-switch-codex` move
-the login you are on right now.
+Neither of these changes the account in use. Arming decides what the *next*
+sessions open on. Only `/kebacc-switch-claude` moves the login you are on right
+now.
 
 ### Upkeep
 
@@ -137,7 +130,17 @@ kebacc-switch refresh -Provider all                  # re-read the quotas, print
 kebacc-switch update
 ```
 
-`-Provider` takes `claude`, `codex` or `all`, and defaults to `claude`.
+`-Provider` takes `claude` — the only pool this binary knows — and defaults to
+it. `all` is still accepted, as a spelling of `claude`, so the hooks written
+before Codex moved out keep working.
+
+**Codex**
+
+Codex lives in its own plugin, `kebacc-codex`, on the `Codex` branch of this
+repository. It has its own binary, its own pool and its own slash commands
+(`/kebacc-add-codex`, `/kebacc-list-codex`, `/kebacc-switch-codex`,
+`/kebacc-remove-codex`, `/kebacc-auto-codex`), and the two install side by
+side.
 
 **Exit codes**
 
@@ -161,7 +164,6 @@ kebacc-switch update
 | `~/.claude/commands/kebacc-*.md` | the slash commands |
 | `~/.kebacc-switch/` | locks, stamps, update state |
 | `~/.kebacc-switch-accounts/` | the Claude Code pool |
-| `~/.kebacc-switch-codex-accounts/` | the Codex pool |
 
 Saved credentials are sealed before they touch disk: DPAPI on Windows, and
 AES-256-GCM under a key held by the macOS Keychain or by libsecret elsewhere.

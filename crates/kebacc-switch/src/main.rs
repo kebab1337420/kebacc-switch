@@ -19,7 +19,7 @@ fn main() {
 }
 
 fn usage_text() {
-    println!("kebacc-switch <command> [-Provider claude|codex|all] [options]");
+    println!("kebacc-switch <command> [options]");
     println!();
     println!("  add         save the login the CLI is using right now");
     println!(
@@ -38,7 +38,7 @@ fn usage_text() {
     println!("  list -Countdown   both quota windows of every saved account, with their resets (-Refresh reads them again first)");
     println!("  auto -Midtask     auto from a tool-use hook, at most once every few minutes");
     println!("  refresh           read every saved account's quota again, silently (the status line spawns this)");
-    println!("  arm -Provider claude|codex|all|off   arm the session-start auto-switch for that pool, or turn it off");
+    println!("  arm -Provider claude|off   arm the session-start auto-switch, or turn it off");
     println!();
     println!("  Updates install themselves once a day at session start. KEBACC_SWITCH_UPDATE=off stops that.");
 }
@@ -115,21 +115,10 @@ fn dispatch(args: &[String]) -> i32 {
         return cmd::midtask::run(&wanted);
     }
 
+    // `all` is kept as a spelling of `claude`: the hooks written before Codex
+    // moved out to its own plugin still say `-Provider all`.
     if provider::is_all(&wanted) {
-        let mut worst = 0;
-        for (index, id) in [ProviderId::Claude, ProviderId::Codex]
-            .into_iter()
-            .enumerate()
-        {
-            if index > 0 && !options.quiet {
-                println!();
-            }
-            let code = run(command, id, &options);
-            if code > worst {
-                worst = code;
-            }
-        }
-        return hushed(worst, &options);
+        return hushed(run(command, ProviderId::Claude, &options), &options);
     }
 
     match provider::resolve(&wanted) {
@@ -185,9 +174,7 @@ fn parse(tokens: &[String]) -> Result<(String, Options), String> {
             next.cloned()
         };
         match name.as_str() {
-            "provider" | "p" => {
-                provider = value().ok_or("-Provider needs a name: claude, codex or all.")?
-            }
+            "provider" | "p" => provider = value().ok_or("-Provider needs a name: claude.")?,
             "email" | "e" => options.email = Some(value().ok_or("-Email needs an address.")?),
             "quiet" => options.quiet = true,
             "hook" => {

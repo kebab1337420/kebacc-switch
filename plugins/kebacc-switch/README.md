@@ -1,6 +1,6 @@
 # Kebacc switch
 
-Several logins for Claude Code and for Codex, saved on this machine, and one
+Several logins for Claude Code, saved on this machine, and one
 command to move between them when one runs out of quota.
 
 It is a Rust binary: the crate is `crates/kebacc-switch` at the root of this
@@ -33,13 +33,13 @@ own runtime first.
 - **update** — replaces the installed binary with the newest release.
   `-Check` only says whether one is out.
 
-Every command takes `-Provider claude`, `-Provider codex`, or `-Provider all`
+Every command takes `-Provider claude`, which is also the default
 to run once per provider.
 
 ```
 kebacc-switch list -Provider all
 kebacc-switch auto -Provider claude
-kebacc-switch switch -Provider codex -Email you@example.com
+kebacc-switch switch -Provider claude -Email you@example.com
 ```
 
 ## Staying up to date
@@ -77,17 +77,16 @@ session that is already running.
 
 ## Switching without being asked
 
-`kebacc-switch arm -Provider claude|codex|all|off` is what arms it after the
+`kebacc-switch arm -Provider claude|off` is what arms it after the
 fact — it writes that hook and nothing else, never touching the account in use.
-The slash commands `/kebacc-auto-claude`, `/kebacc-auto-codex`,
-`/kebacc-auto-all` and `/kebacc-auto-toggle` are that command; switching the
-live login is `/kebacc-switch-claude` and `/kebacc-switch-codex`, and nothing
+The slash commands `/kebacc-auto-claude` and `/kebacc-auto-toggle` are that
+command; switching the live login is `/kebacc-switch-claude`, and nothing
 else.
 
 `install.ps1 -AutoSwitch all` writes one `SessionStart` hook into
 `~/.claude/settings.json`, so `auto` runs once as each Claude Code session
 starts: a session that would have opened on a capped account opens on a free one
-instead. `-AutoSwitch claude` or `-AutoSwitch codex` narrows it to one pool.
+instead.
 Installing again replaces that hook rather than adding a second one, and
 `uninstall.ps1` takes it back out. There is no watcher and no daemon: apart from
 the short refresh the status line spawns for itself, between two sessions
@@ -97,12 +96,11 @@ nothing of this is running.
 
 `install.ps1 -StatusLine` points Claude Code's status line at `kebacc-switch
 statusline`, which reads the payload on stdin and prints one line. It draws the account in use and its two windows, how
-many saved Claude logins still have room, how many Codex logins do — Codex has
-no status line of its own, and both pools are switched from here — and, when the
-`SessionStart` hook is in place, what the switch is armed for:
+many saved logins still have room and, when the `SessionStart` hook is in
+place, what the switch is armed for:
 
 ```
-you · 5h 43% / 7d 69% · 2/3 free · codex 1/2 free · auto all
+you · 5h 43% / 7d 69% · 2/3 free · auto claude
 ```
 
 An account whose quota has never been read counts as neither free nor capped: it
@@ -134,7 +132,6 @@ root [`README.md`](../../README.md) lists every one of them.
 | --- | --- |
 | `~/.claude-tools/` | the binary, and `.version` |
 | `~/.kebacc-switch-accounts/` | saved Claude Code logins |
-| `~/.kebacc-switch-codex-accounts/` | saved Codex logins |
 | `~/.claude/commands/kebacc-*.md` | the slash commands |
 | `~/.kebacc-switch/` | stamps, locks and caches (`KEBACC_SWITCH_STATE_DIR` moves it) |
 

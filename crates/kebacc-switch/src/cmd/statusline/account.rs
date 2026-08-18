@@ -1,4 +1,4 @@
-use super::{bold, cyan, dim, green, off, orange, red, violet, yellow};
+use super::{bold, cyan, dim, green, off, orange, red, yellow};
 use crate::jsonio;
 use crate::pool;
 use crate::provider::{self, ProviderId};
@@ -7,7 +7,7 @@ use chrono::Utc;
 use serde_json::Value;
 use std::sync::OnceLock;
 
-const POOLS: [&str; 2] = ["claude", "codex"];
+const POOLS: [&str; 1] = ["claude"];
 
 pub struct Glyphs {
     pub arrow: &'static str,
@@ -345,7 +345,6 @@ fn auto_label(scope: Option<&str>) -> String {
     let tint = |pool: &str| -> fn(&str) -> String {
         match pool {
             "claude" => orange,
-            "codex" => violet,
             _ => dim,
         }
     };
@@ -428,33 +427,6 @@ pub fn segments(payload: &Value) -> Vec<String> {
     }
     out.push(state);
 
-    if let Some(codex) = codex_seats() {
-        out.push(codex);
-    }
-
     out.push(auto_label(scope.as_deref()));
     out
-}
-
-fn codex_seats() -> Option<String> {
-    let store = provider::spec(ProviderId::Codex).store;
-    let accounts = pool::plain_snapshots(&store)?;
-    let mut total = 0usize;
-    let mut free = 0usize;
-    for (_, snapshot) in &accounts {
-        if snapshot.is_null() {
-            continue;
-        }
-        total += 1;
-        if usage::from_cache(snapshot.get("usageCache"))
-            .filter(usage::Usage::known)
-            .is_some_and(|cache| cache.usable())
-        {
-            free += 1;
-        }
-    }
-    if total == 0 {
-        return None;
-    }
-    Some(violet(&format!("codex {free}/{total} free")))
 }

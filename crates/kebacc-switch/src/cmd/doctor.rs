@@ -3,7 +3,7 @@ use crate::jsonio;
 use crate::live;
 use crate::lock;
 use crate::pool::{self, Pool, Trust};
-use crate::provider::{Provider, ProviderId};
+use crate::provider::{self, Provider, ProviderId};
 use crate::seal;
 use crate::term::{say, Color};
 use serde_json::Value;
@@ -143,6 +143,11 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
     let store = Pool::new(provider);
     if store.key(false).is_none() {
         report.warn("The pool key is missing or unreadable: nothing can be verified.");
+    }
+
+    if opts.protect {
+        provider::reprotect_dir(&provider.store);
+        provider::reprotect_dir(&provider::state_dir());
     }
 
     let mut plain = 0u32;

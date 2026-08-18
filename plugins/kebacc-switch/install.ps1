@@ -20,7 +20,7 @@ param(
     [switch]$StatusLine,
     # Run `auto` once as each session starts, for these pools. Off by default:
     # it changes which login the next session answers as.
-    [ValidateSet('claude', 'codex', 'all')]
+    [ValidateSet('claude')]
     [string]$AutoSwitch,
     [switch]$NoProfileEdit,
     # Turn the daily self-update off for this machine.

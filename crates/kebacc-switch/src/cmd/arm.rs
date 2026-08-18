@@ -13,10 +13,10 @@ pub fn run(scope: &str, quiet: bool) -> i32 {
     let scope = scope.trim().to_lowercase();
     let wanted = match scope.as_str() {
         "off" | "none" | "no" => None,
-        "claude" | "codex" | "all" => Some(scope.clone()),
+        "claude" | "all" => Some("claude".to_string()),
         other => {
             say(
-                &format!("'{other}' is not a pool. Use claude, codex, all or off."),
+                &format!("'{other}' is not a pool. Use claude or off."),
                 Color::Red,
             );
             return 64;

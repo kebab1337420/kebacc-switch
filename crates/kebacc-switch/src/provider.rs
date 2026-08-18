@@ -1,19 +1,19 @@
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
-pub const PROVIDER_IDS: [&str; 2] = ["claude", "codex"];
+const PROTECTED_MARK: &str = ".protected";
+
+pub const PROVIDER_IDS: [&str; 1] = ["claude"];
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum ProviderId {
     Claude,
-    Codex,
 }
 
 impl ProviderId {
     pub fn as_str(self) -> &'static str {
         match self {
             ProviderId::Claude => "claude",
-            ProviderId::Codex => "codex",
         }
     }
 }
@@ -82,7 +82,10 @@ pub fn resolve(id: &str) -> Result<ProviderId, String> {
     }
     match key.as_str() {
         "claude" | "claude-code" | "claudecode" | "cc" | "anthropic" => Ok(ProviderId::Claude),
-        "codex" | "openai" | "chatgpt" | "gpt" => Ok(ProviderId::Codex),
+        "codex" | "openai" | "chatgpt" | "gpt" => Err(
+            "Codex is not part of kebacc-switch. It lives in the kebacc-codex plugin, on the Codex branch."
+                .to_string(),
+        ),
         _ => Err(format!(
             "Unknown provider '{id}'. Known providers: {}.",
             PROVIDER_IDS.join(", ")
@@ -103,41 +106,17 @@ pub fn newest(paths: &[PathBuf]) -> Option<PathBuf> {
 }
 
 pub fn spec(id: ProviderId) -> Provider {
-    match id {
-        ProviderId::Codex => {
-            let dir = match std::env::var_os("CODEX_HOME") {
-                Some(d) if !d.is_empty() => PathBuf::from(d),
-                _ => home().join(".codex"),
-            };
-            Provider {
-                id,
-                label: "Codex",
-                cli: "codex",
-                store: store_dir(
-                    "KEBACC_SWITCH_CODEX_ACCOUNTS",
-                    ".kebacc-switch-codex-accounts",
-                ),
-                cred_candidates: vec![dir.join("auth.json")],
-                config_candidates: vec![dir.join("auth.json")],
-                cred_label: "~/.codex/auth.json",
-                uses_keychain: false,
-                keychain_service: None,
-            }
-        }
-        ProviderId::Claude => {
-            let dir = claude_config_dir();
-            Provider {
-                id,
-                label: "Claude Code",
-                cli: "claude",
-                store: store_dir("KEBACC_SWITCH_ACCOUNTS", ".kebacc-switch-accounts"),
-                cred_candidates: vec![dir.join(".credentials.json")],
-                config_candidates: vec![home().join(".claude.json"), dir.join(".claude.json")],
-                cred_label: "~/.claude/.credentials.json",
-                uses_keychain: cfg!(target_os = "macos"),
-                keychain_service: Some("Claude Code-credentials"),
-            }
-        }
+    let dir = claude_config_dir();
+    Provider {
+        id,
+        label: "Claude Code",
+        cli: "claude",
+        store: store_dir("KEBACC_SWITCH_ACCOUNTS", ".kebacc-switch-accounts"),
+        cred_candidates: vec![dir.join(".credentials.json")],
+        config_candidates: vec![home().join(".claude.json"), dir.join(".claude.json")],
+        cred_label: "~/.claude/.credentials.json",
+        uses_keychain: cfg!(target_os = "macos"),
+        keychain_service: Some("Claude Code-credentials"),
     }
 }
 
@@ -155,10 +134,6 @@ impl Provider {
 
     pub fn config_file(&self) -> PathBuf {
         newest(&self.config_candidates).unwrap_or_else(|| self.config_candidates[0].clone())
-    }
-
-    pub fn is_codex(&self) -> bool {
-        self.id == ProviderId::Codex
     }
 
     pub fn backup_dir(&self) -> PathBuf {
@@ -225,9 +200,23 @@ pub fn protect_dir_once(dir: &Path) {
     let Ok(mut done) = locked_down().lock() else {
         return;
     };
-    if done.insert(dir.to_path_buf()) {
-        restrict(dir, true);
+    if !done.insert(dir.to_path_buf()) {
+        return;
     }
+    let mark = dir.join(PROTECTED_MARK);
+    if mark.exists() {
+        return;
+    }
+    restrict(dir, true);
+    let _ = std::fs::write(&mark, b"");
+}
+
+pub fn reprotect_dir(dir: &Path) {
+    if !dir.is_dir() {
+        return;
+    }
+    restrict(dir, true);
+    let _ = std::fs::write(dir.join(PROTECTED_MARK), b"");
 }
 
 #[cfg(windows)]

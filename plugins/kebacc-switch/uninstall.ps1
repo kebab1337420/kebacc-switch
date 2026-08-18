@@ -105,5 +105,5 @@ if (Test-Path -LiteralPath $settingsPath) {
 }
 
 Say ''
-Say 'Uninstalled. The saved logins are still in ~/.kebacc-switch-accounts and ~/.kebacc-switch-codex-accounts.' DarkGray
+Say 'Uninstalled. The saved logins are still in ~/.kebacc-switch-accounts.' DarkGray
 exit 0

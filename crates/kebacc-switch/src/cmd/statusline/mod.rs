@@ -79,9 +79,6 @@ pub fn cyan(text: &str) -> String {
 pub fn orange(text: &str) -> String {
     paint(text, "38;5;208")
 }
-pub fn violet(text: &str) -> String {
-    paint(text, "38;5;141")
-}
 
 struct Line<'a> {
     payload: &'a Value,

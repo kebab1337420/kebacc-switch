@@ -150,6 +150,8 @@ kebacc-switch list    -Provider all -Refresh -Countdown
 kebacc-switch switch  -Provider claude -Email you@example.com
 kebacc-switch auto    -Provider all                  # switch only if capped
 kebacc-switch arm     -Provider claude                # arm the auto-switch, change nothing now
+kebacc-switch arm     -Provider claude -Merge         # arm it without narrowing what is already armed
+kebacc-switch arm     -Provider claude -Drop          # take this pool out again
 kebacc-switch arm     -Provider off                   # disarm it
 kebacc-switch doctor  -Provider all
 kebacc-switch refresh -Provider all                  # re-read the quotas, print nothing

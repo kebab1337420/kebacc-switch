@@ -29,6 +29,8 @@ pub struct Options {
     pub clean: bool,
     pub countdown: bool,
     pub midtask: bool,
+    pub merge: bool,
+    pub drop: bool,
     pub check: bool,
     pub spawned: bool,
     pub statusline: Option<bool>,

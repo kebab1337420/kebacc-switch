@@ -13,13 +13,28 @@ const TIMEOUT: u64 = 25;
 /// a detached `auto`: the switch itself never happens on this thread.
 const MIDTASK_TIMEOUT: u64 = 10;
 
+/// What arming does to the scope that is already in the settings.
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Mode {
+    /// Write the pool asked for, whatever was armed before.
+    Set,
+    /// Add this pool to what is armed, leaving the rest of the scope alone.
+    /// Only hooks running this binary are ever read or rewritten, so a switcher
+    /// installed beside this one keeps its own pair whatever this does.
+    Merge,
+    /// Take this pool out. This build carries one pool, so what is left is
+    /// nothing it could be armed on: the hooks go. The other half's hooks run
+    /// its own binary under its own name and were never touched.
+    Drop,
+}
+
 /// Arm or disarm the auto-switch. This only edits the hooks in `settings.json`:
 /// it never switches the account, whatever the quota says.
 ///
 /// Two hooks go in, not one. `SessionStart` opens the next session on an
 /// account with room; `PreToolUse` keeps that true *during* a run, so a quota
 /// that dies mid-task is noticed then instead of at the next launch.
-pub fn run(scope: &str, quiet: bool) -> i32 {
+pub fn run(scope: &str, quiet: bool, mode: Mode) -> i32 {
     let scope = scope.trim().to_lowercase();
     let wanted = match scope.as_str() {
         "off" | "none" | "no" => None,
@@ -33,8 +48,20 @@ pub fn run(scope: &str, quiet: bool) -> i32 {
         }
     };
 
+    if wanted.is_none() && mode != Mode::Set {
+        say(
+            "-Merge and -Drop need a pool to add or take out, not 'off'.",
+            Color::Red,
+        );
+        return 64;
+    }
+
     let dir = provider::claude_config_dir();
     let mut touched = false;
+    // What was actually written, which under -Merge can be wider than what was
+    // asked for and under -Drop is nothing at all. Reported instead of the
+    // request.
+    let mut written = wanted.clone();
 
     for name in SETTINGS {
         let path = dir.join(name);
@@ -43,11 +70,25 @@ pub fn run(scope: &str, quiet: bool) -> i32 {
         };
         let before = settings.clone();
         let existing = strip(&mut settings);
-        if let Some(scope) = &wanted {
-            if let Some(command) = existing.first() {
-                arm_both(&mut settings, &exe_of(command), scope);
-                touched = true;
+        if let (Some(asked), Some(command)) = (&wanted, existing.first()) {
+            // Keep the binary the hooks already pointed at, whatever it is.
+            let exe = exe_of(command);
+            let scope = match mode {
+                Mode::Set => Some(asked.clone()),
+                Mode::Merge => Some(widen(
+                    crate::cmd::doctor::hook_scope(command).as_deref(),
+                    asked,
+                )),
+                Mode::Drop => None,
+            };
+            match scope {
+                Some(scope) => {
+                    arm_both(&mut settings, &exe, &scope);
+                    written = Some(scope);
+                }
+                None => written = None,
             }
+            touched = true;
         }
         if settings != before {
             if let Err(problem) = jsonio::write(&path, &settings) {
@@ -60,8 +101,10 @@ pub fn run(scope: &str, quiet: bool) -> i32 {
         }
     }
 
+    // Nothing was armed anywhere, so there is nothing to widen: Set and Merge
+    // write the first pair of hooks, Drop has nothing to take out.
     if let Some(scope) = &wanted {
-        if !touched {
+        if !touched && mode != Mode::Drop {
             let path = dir.join(SETTINGS[0]);
             let mut settings = jsonio::read(&path).unwrap_or_else(|| json!({}));
             strip(&mut settings);
@@ -73,16 +116,38 @@ pub fn run(scope: &str, quiet: bool) -> i32 {
                 );
                 return 1;
             }
+        } else if !touched {
+            written = None;
         }
     }
 
     if !quiet {
-        match &wanted {
+        match &written {
             Some(scope) => println!("auto {scope}"),
             None => println!("auto off"),
         }
     }
     0
+}
+
+/// The scope one hook has to carry to cover both what is armed and what is being
+/// added. This build only ever finds its own hooks, so in practice that is
+/// `claude`; `all` is still understood, and so is the other half's name, because
+/// a hook written back when one binary carried both pools says one of those and
+/// has to keep meaning "this pool too" rather than being replaced outright.
+fn widen(existing: Option<&str>, adding: &str) -> String {
+    let Some(had) = existing.map(|s| s.trim().to_lowercase()) else {
+        return adding.to_string();
+    };
+    if had.is_empty() || had == adding {
+        return adding.to_string();
+    }
+    match (had.as_str(), adding) {
+        ("claude" | "codex" | "all", "claude" | "all") => "all".to_string(),
+        // A scope this build has never heard of is not something to widen, so
+        // the pool asked for takes its place.
+        _ => adding.to_string(),
+    }
 }
 
 /// Writes the pair: the session-start hook and the mid-task one, same binary,
@@ -188,6 +253,13 @@ fn line(exe: &str, scope: &str, midtask: bool) -> String {
     format!("{} auto -Provider {scope} -Hook{tail}", quoted(exe))
 }
 
+/// The binary the hooks should name when there is none already there to copy.
+///
+/// The copy running this, first: `arm` is what the installers call, they call it
+/// as the binary they just installed, and an installer pointed at a tools
+/// directory of its own has to arm that one and not whatever is in the default
+/// place. `~/.claude-tools` is the fallback for the case where the running path
+/// cannot be read at all.
 fn installed() -> PathBuf {
     let name = if cfg!(windows) {
         "kebacc-switch.exe"
@@ -195,9 +267,6 @@ fn installed() -> PathBuf {
         "kebacc-switch"
     };
     let tools = provider::home().join(".claude-tools").join(name);
-    if tools.exists() {
-        return tools;
-    }
     std::env::current_exe().unwrap_or(tools)
 }
 
@@ -211,7 +280,7 @@ fn quoted(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{add, exe_of, line, strip, PRE_TOOL_USE, SESSION_START};
+    use super::{add, exe_of, line, strip, widen, PRE_TOOL_USE, SESSION_START};
     use serde_json::json;
 
     fn armed(command: &str) -> serde_json::Value {
@@ -304,6 +373,26 @@ mod tests {
             settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"],
             command
         );
+    }
+
+    #[test]
+    fn merging_keeps_a_scope_that_covers_the_other_half_too() {
+        // Written back when one binary carried both pools. Arming this one
+        // again must not narrow it to this pool alone.
+        assert_eq!(widen(Some("codex"), "claude"), "all");
+        assert_eq!(widen(Some("all"), "claude"), "all");
+    }
+
+    #[test]
+    fn merging_into_nothing_is_just_this_pool() {
+        assert_eq!(widen(None, "claude"), "claude");
+        assert_eq!(widen(Some(""), "claude"), "claude");
+        assert_eq!(widen(Some("claude"), "claude"), "claude");
+    }
+
+    #[test]
+    fn a_scope_nobody_knows_is_replaced_not_widened() {
+        assert_eq!(widen(Some("sonnet"), "claude"), "claude");
     }
 
     #[test]

@@ -40,6 +40,10 @@ fn usage_text() {
     println!("  auto -Midtask     auto from a tool-use hook, at most once every few minutes");
     println!("  refresh           read every saved account's quota again, silently (the status line spawns this)");
     println!("  arm -Provider claude|off   arm the session-start auto-switch, or turn it off");
+    println!("  arm -Provider claude -Merge         add this pool to whatever is already armed, rather than replacing it");
+    println!(
+        "  arm -Provider claude -Drop          take this pool out, leaving anything else armed"
+    );
     println!();
     println!("  Updates install themselves once a day at session start. KEBACC_SWITCH_UPDATE=off stops that.");
 }
@@ -110,7 +114,16 @@ fn dispatch(args: &[String]) -> i32 {
     }
 
     if command == "arm" {
-        return cmd::arm::run(&wanted, options.quiet);
+        let mode = match (options.merge, options.drop) {
+            (true, true) => {
+                say("-Merge and -Drop ask for opposite things.", Color::Red);
+                return 64;
+            }
+            (true, false) => cmd::arm::Mode::Merge,
+            (false, true) => cmd::arm::Mode::Drop,
+            (false, false) => cmd::arm::Mode::Set,
+        };
+        return cmd::arm::run(&wanted, options.quiet, mode);
     }
 
     if command == "refresh" {
@@ -203,6 +216,8 @@ fn parse(tokens: &[String]) -> Result<(String, Options), String> {
             "clean" => options.clean = true,
             "countdown" => options.countdown = true,
             "midtask" => options.midtask = true,
+            "merge" => options.merge = true,
+            "drop" => options.drop = true,
             "check" => options.check = true,
             "spawned" => options.spawned = true,
             "statusline" => options.statusline = Some(true),

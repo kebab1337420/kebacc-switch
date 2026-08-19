@@ -71,7 +71,7 @@ variables decide the rest:
 - `KEBACC_SWITCH_UPDATE_INTERVAL_MS` — how long between two checks. The default
   is a day.
 
-The check happens at session start only. The tool-use hook installed by
+The update check happens at session start only. The tool-use hook installed by
 `-AutoSwitch` never installs anything: a binary must not be replaced underneath a
 session that is already running.
 
@@ -82,6 +82,16 @@ fact — it writes that hook and nothing else, never touching the account in use
 The slash commands `/kebacc-auto-claude` and `/kebacc-auto-toggle` are that
 command; switching the live login is `/kebacc-switch-claude`, and nothing
 else.
+
+Two flags for a machine that carries the Codex half as well:
+
+- `-Merge` adds this pool to whatever is already armed instead of replacing it,
+  so installing this plugin cannot narrow a hook somebody else widened. The
+  installers use it.
+- `-Drop` takes this pool out. This build carries one pool, so what is left is
+  nothing it could be armed on and the hooks go — the other half's hooks run its
+  own binary, under its own name, and are never read or written here. The
+  uninstallers use it.
 
 `install.ps1 -AutoSwitch claude` writes a pair of hooks into
 `~/.claude/settings.json`:

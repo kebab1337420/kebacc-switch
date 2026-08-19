@@ -32,8 +32,12 @@ dim() { printf '\033[90m%s\033[0m\n' "$1"; }
 # Disarmed and unwired before the binary goes, or the session hook and the
 # status line are left pointing at a file that is no longer there.
 if [ -x "$entry" ]; then
-    "$entry" arm -Provider off > /dev/null 2>&1 || true
-    "$entry" wire -NoStatusLine > /dev/null 2>&1 || true
+    # -Drop rather than off: it takes this pool out and leaves anything else
+    # armed, where off disarms whatever it finds.
+    "$entry" arm -Provider claude -Drop -Quiet > /dev/null 2>&1 || true
+    # -AutoUpdate takes KEBACC_SWITCH_UPDATE back out: it is a setting about a
+    # binary that is about to be gone, and it would silence the next install.
+    "$entry" wire -NoStatusLine -AutoUpdate > /dev/null 2>&1 || true
 fi
 
 # Named one by one: ~/.claude-tools is shared with kebacc-codex, and a sweep
@@ -68,10 +72,16 @@ if [ -d "$tools_dir" ]; then
 fi
 
 # The codex commands belong to kebacc-codex, which has its own uninstaller.
+# kebacc-install-codex.md is the exception: this plugin ships it, so this plugin
+# takes it away, or it is left behind pointing at a script that went with the
+# binary.
 gone=0
 for old in "$claude"/commands/kebacc-*.md "$claude"/commands/account-*.md "$claude"/commands/claude-account-*.md; do
     [ -e "$old" ] || continue
-    case "$old" in *codex*) continue ;; esac
+    case "$old" in
+        */kebacc-install-codex.md) ;;
+        *codex*) continue ;;
+    esac
     rm -f "$old"
     gone=$((gone + 1))
 done

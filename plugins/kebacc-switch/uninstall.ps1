@@ -58,13 +58,17 @@ if (Test-Path -LiteralPath $ToolsDir) {
 
 $commands = Join-Path $claude 'commands'
 if (Test-Path -LiteralPath $commands) {
-    # The codex commands are kebacc-codex's, and it has an uninstaller of its own.
+    # The codex commands are kebacc-codex's, and it has an uninstaller of its
+    # own. `kebacc-install-codex.md` is the exception: this plugin ships it, so
+    # this plugin takes it away, or it is left behind pointing at a script that
+    # went with the binary.
+    $ours = 'kebacc-install-codex.md'
     $gone = @(Get-ChildItem -LiteralPath $commands -File |
         Where-Object {
             ($_.Name -like 'kebacc-*.md' -or
              $_.Name -like 'account-*.md' -or
              $_.Name -like 'claude-account-*.md') -and
-            $_.Name -notlike '*codex*'
+            ($_.Name -notlike '*codex*' -or $_.Name -eq $ours)
         })
     $gone | Remove-Item -Force
     if ($gone.Count) { Say "Removed $($gone.Count) slash command(s)" Green }
@@ -123,6 +127,25 @@ if (Test-Path -LiteralPath $settingsPath) {
                 Say "Removed the $event hook from settings.json" Green
                 $touched = $true
             }
+        }
+
+        # KEBACC_SWITCH_UPDATE is a setting about a binary that is about to be
+        # gone, and left there it would silence the next install.
+        $envBlock = $settings.PSObject.Properties['env']
+        if ($envBlock -and $envBlock.Value.PSObject.Properties['KEBACC_SWITCH_UPDATE']) {
+            $envBlock.Value.PSObject.Properties.Remove('KEBACC_SWITCH_UPDATE')
+            if (-not $envBlock.Value.PSObject.Properties.Name.Count) {
+                $settings.PSObject.Properties.Remove('env')
+            }
+            Say 'Took KEBACC_SWITCH_UPDATE out of settings.json' Green
+            $touched = $true
+        }
+
+        # An empty `hooks` object is scaffolding for hooks that are gone, and
+        # the binary never leaves one behind either.
+        if ($hooks -and -not $hooks.Value.PSObject.Properties.Name.Count) {
+            $settings.PSObject.Properties.Remove('hooks')
+            $touched = $true
         }
 
         if ($touched) {

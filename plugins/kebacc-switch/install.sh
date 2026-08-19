@@ -156,8 +156,11 @@ if [ "$status_line" = yes ] || [ "$no_auto_update" = yes ]; then
 fi
 
 if [ "$auto_switch" = yes ]; then
-    "$entry" arm -Provider claude > /dev/null
-    green 'Each session will now run: kebacc-switch auto -Provider claude'
+    # -Merge, not a plain arm: a hook already armed on a scope that covers the
+    # other half too keeps covering it. Installing this plugin must not narrow
+    # what somebody else is running.
+    armed=$("$entry" arm -Provider claude -Merge)
+    green "Session start and every tool call now check the quota: ${armed:-auto claude}"
 fi
 
 printf '\n'

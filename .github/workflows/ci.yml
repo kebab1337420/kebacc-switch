@@ -50,6 +50,49 @@ jobs:
             echo "$script ok"
           done
 
+      # The version a plugin stamps into its marker file, the version the binary
+      # reports, and the version cargo built are three copies of one number. A
+      # release where they disagree installs a binary that then thinks it is out
+      # of date, and updates itself in a loop.
+      - name: The versions agree
+        if: runner.os != 'Windows'
+        run: |
+          set -eu
+          crate=$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' crates/kebacc-switch/Cargo.toml | head -n 1)
+          marked=$(tr -d ' \t\r\n' < plugins/kebacc-switch/VERSION)
+          test "$marked" = "$crate" || {
+            echo "plugins/kebacc-switch/VERSION is $marked, the crate is $crate" >&2
+            exit 1
+          }
+          echo "every VERSION says $crate"
+
+      # The installers sweep the commands directory by pattern and skip anything
+      # with `codex` in the name, because those belong to the other plugin. A
+      # command shipped here that the sweep skips is one no update ever replaces
+      # and no uninstall ever removes, so the pattern and what is shipped have
+      # to agree.
+      - name: Every command this plugin ships is one it also removes
+        if: runner.os != 'Windows'
+        run: |
+          set -eu
+          bad=0
+          for file in plugins/kebacc-switch/src/commands/*.md; do
+            name=${file##*/}
+            case "$name" in
+                kebacc-*.md) ;;
+                *) echo "$name is not swept: the installers only know kebacc-*.md" >&2; bad=1; continue ;;
+            esac
+            # The one command with `codex` in its name that is ours, and the
+            # uninstaller names it by hand for exactly this reason.
+            case "$name" in
+                kebacc-install-codex.md) grep -q "$name" plugins/kebacc-switch/uninstall.sh ||
+                    { echo "$name is skipped by the codex filter and not named in uninstall.sh" >&2; bad=1; } ;;
+                *codex*) echo "$name is skipped by the codex filter in both installers" >&2; bad=1 ;;
+            esac
+          done
+          test "$bad" = 0
+          echo "$(ls plugins/kebacc-switch/src/commands/*.md | wc -l | tr -d ' ') commands, all swept"
+
       # The installer is the half that has never been run outside Windows, so it
       # is run here for real, against directories made for the occasion.
       - name: install.sh puts everything where it says
@@ -82,7 +125,14 @@ jobs:
           sh plugins/kebacc-switch/uninstall.sh
 
           test ! -e "$HOME/.claude-tools/kebacc-switch"
-          test ! -e "$CLAUDE_CONFIG_DIR/commands/kebacc-list-claude.md"
+          # Every command that was installed, not just the easy ones: the sweep
+          # skips `*codex*`, and this plugin ships one such name of its own.
+          for file in plugins/kebacc-switch/src/commands/*.md; do
+            test ! -e "$CLAUDE_CONFIG_DIR/commands/${file##*/}" || {
+              echo "uninstall.sh left ${file##*/} behind" >&2
+              exit 1
+            }
+          done
           ! grep -q 'statusLine' "$CLAUDE_CONFIG_DIR/settings.json"
           # Neither hook may outlive the binary they point at.
           ! grep -q 'SessionStart' "$CLAUDE_CONFIG_DIR/settings.json"

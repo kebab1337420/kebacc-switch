@@ -161,53 +161,42 @@ if (-not $NoProfileEdit) {
     }
 }
 
-# settings.json belongs to the user, so it is read, amended and written back
-# whole rather than rebuilt, and a copy is kept the first time this touches it.
+# settings.json belongs to the user, so nothing here rewrites it: the binary
+# does, and a copy is kept the first time this touches it.
 $settingsPath = Join-Path $claude 'settings.json'
 
-function Read-ClaudeSettings {
-    if (-not (Test-Path -LiteralPath $settingsPath)) { return [pscustomobject]@{} }
-    return Get-Content -LiteralPath $settingsPath -Raw | ConvertFrom-Json
-}
-
-function Write-ClaudeSettings {
-    param([psobject]$Settings)
-    if (Test-Path -LiteralPath $settingsPath) {
-        # `.cc-backup` is the file as it was before this installer ever ran and is
-        # never overwritten; `.cc-backup.prev` is the state before this run.
-        if (-not (Test-Path -LiteralPath "$settingsPath.cc-backup")) {
-            Copy-Item -LiteralPath $settingsPath -Destination "$settingsPath.cc-backup" -Force
-        }
-        Copy-Item -LiteralPath $settingsPath -Destination "$settingsPath.cc-backup.prev" -Force
+# The binary writes settings.json itself, so all this side has to do is keep a
+# copy of what was there first. `.cc-backup` is the file as it was before this
+# installer ever ran and is never overwritten; `.cc-backup.prev` is the state
+# before this run.
+function Backup-ClaudeSettings {
+    if (-not (Test-Path -LiteralPath $settingsPath)) { return }
+    if (-not (Test-Path -LiteralPath "$settingsPath.cc-backup")) {
+        Copy-Item -LiteralPath $settingsPath -Destination "$settingsPath.cc-backup" -Force
     }
-    # Deep rather than 20: the default silently truncates anything nested deeper,
-    # and settings.json is the user's file, not ours to shorten.
-    $json = $Settings | ConvertTo-Json -Depth 100
-    # A round trip that cannot be read back means the write would corrupt the
-    # file, so nothing is written at all.
-    try { $null = $json | ConvertFrom-Json } catch {
-        Say "Refusing to rewrite $settingsPath — the result would not parse. Nothing changed." Red
-        exit 1
-    }
-    [IO.File]::WriteAllText($settingsPath, $json, [Text.UTF8Encoding]::new($false))
+    Copy-Item -LiteralPath $settingsPath -Destination "$settingsPath.cc-backup.prev" -Force
 }
 
 # Forward slashes throughout: these strings end up in JSON, where a backslash is
 # an escape.
 $command = ($entry -replace '\\', '/')
 
-if ($StatusLine) {
-    $settings = Read-ClaudeSettings
-    $line = [pscustomobject]@{
-        type    = 'command'
-        command = "`"$command`" statusline"
-    }
-    $settings | Add-Member -NotePropertyName statusLine -NotePropertyValue $line -Force
-    Write-ClaudeSettings $settings
-    Say "Pointed the Claude Code status line at the switcher ($settingsPath)" Green
+# settings.json belongs to the user, so the switcher edits it itself: one
+# implementation of that read-amend-write, shared by both installers, rather
+# than a second one here in PowerShell.
+if ($StatusLine -or $NoAutoUpdate) {
+    Backup-ClaudeSettings
+    $wireArgs = @()
+    if ($StatusLine) { $wireArgs += '-StatusLine' }
+    if ($NoAutoUpdate) { $wireArgs += '-NoAutoUpdate' }
+    & $command wire @wireArgs | Out-Null
+    if ($LASTEXITCODE -ne 0) { throw 'Could not write the Claude Code settings.' }
+    if ($StatusLine) { Say "Pointed the Claude Code status line at the switcher ($settingsPath)" Green }
+    if ($NoAutoUpdate) { Say "The switcher will not update itself: KEBACC_SWITCH_UPDATE=off ($settingsPath)" Yellow }
 }
 
 if ($AutoSwitch) {
+    Backup-ClaudeSettings
     # The binary writes the hooks itself, as `install.sh` has it do: a
     # `SessionStart` one that opens each session on an account with room, and a
     # `PreToolUse` one that keeps that true mid-run, so a quota that dies while
@@ -218,20 +207,12 @@ if ($AutoSwitch) {
     # too small to switch in, a normal state.
     #
     # Anything armed before is replaced, not stacked: running the installer
-    # twice must leave one hook of each kind, and switching scope must not keep
-    # the old scope running beside the new one. `arm` handles that.
-    & $command arm -Provider $AutoSwitch -Quiet
+    # twice must leave one hook of each kind. -Merge is what keeps that from
+    # narrowing anyone: a hook already armed on a scope that covers the other
+    # half too goes back with that scope intact.
+    $armed = & $command arm -Provider $AutoSwitch -Merge
     if ($LASTEXITCODE -ne 0) { throw "Could not arm the auto-switch for '$AutoSwitch'." }
-    Say "auto -Provider $AutoSwitch is armed, at session start and mid-task" Green
-}
-
-if ($NoAutoUpdate) {
-    $settings = Read-ClaudeSettings
-    $envBlock = if ($settings.PSObject.Properties['env']) { $settings.env } else { [pscustomobject]@{} }
-    $envBlock | Add-Member -NotePropertyName KEBACC_SWITCH_UPDATE -NotePropertyValue 'off' -Force
-    $settings | Add-Member -NotePropertyName env -NotePropertyValue $envBlock -Force
-    Write-ClaudeSettings $settings
-    Say "The switcher will not update itself: KEBACC_SWITCH_UPDATE=off ($settingsPath)" Yellow
+    Say "Session start and every tool call now check the quota: $armed" Green
 }
 
 Say ''

@@ -602,8 +602,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "kebacc-switch"
-version = "0.2.2"
+name = "kebacc-codex"
+version = "0.2.6"
 dependencies = [
  "aes-gcm",
  "base64 0.22.1",

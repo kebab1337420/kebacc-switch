@@ -1,0 +1,8 @@
+# The installers run on the platform they are written for, and a shell script
+# with CRLF line endings does not run at all on macOS or Linux.
+*.sh text eol=lf
+*.ps1 text eol=crlf
+# cmd.exe reads a .bat line by line as it runs it, and a lone LF at the end of
+# a `goto` or a `for` line has been known to make it lose its place, so these
+# stay CRLF wherever they are checked out.
+*.bat text eol=crlf

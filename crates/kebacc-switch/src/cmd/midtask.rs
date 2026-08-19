@@ -37,12 +37,40 @@ fn hook_payload() -> String {
 /// A tool call that is itself a switcher command — listing the accounts,
 /// checking the install — must not switch the account under the user's feet.
 /// They asked to look, not to move.
+///
+/// Only the command actually being run counts. Merely naming us — a `grep
+/// kebacc`, a `cargo test` inside this repository, an edit to a file under
+/// `crates/kebacc-switch/` — is not a switcher call, and used to cost every
+/// mid-task check for the length of a session spent working on the switcher
+/// itself.
 fn about_us(payload: &str) -> bool {
-    let payload = payload.to_lowercase();
-    let Some(input) = payload.find("\"tool_input\"") else {
+    let Ok(payload) = serde_json::from_str::<serde_json::Value>(payload) else {
         return false;
     };
-    payload[input..].contains("kebacc")
+    let Some(command) = payload
+        .get("tool_input")
+        .and_then(|input| input.get("command"))
+        .and_then(serde_json::Value::as_str)
+    else {
+        return false;
+    };
+    is_switcher(command)
+}
+
+/// The first word of a shell command, minus quotes and any directory in front
+/// of it, is the program. Ours are named after the pool they carry.
+fn is_switcher(command: &str) -> bool {
+    let Some(word) = command.split_whitespace().next() else {
+        return false;
+    };
+    let program = word
+        .trim_matches(|c| c == '"' || c == '\'')
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(word)
+        .to_lowercase();
+    let program = program.strip_suffix(".exe").unwrap_or(&program);
+    matches!(program, "kebacc-switch" | "kebacc-codex")
 }
 
 fn stamp_file() -> PathBuf {
@@ -104,6 +132,23 @@ mod tests {
     fn an_unrelated_command_still_arms_the_check() {
         assert!(!about_us(
             r#"{"tool_name":"Bash","tool_input":{"command":"cargo build"}}"#
+        ));
+    }
+
+    #[test]
+    fn working_on_the_switcher_still_arms_the_check() {
+        assert!(!about_us(
+            r#"{"tool_name":"Bash","tool_input":{"command":"grep -rn kebacc crates/kebacc-switch/src"}}"#
+        ));
+        assert!(!about_us(
+            r#"{"tool_name":"Edit","tool_input":{"file_path":"crates/kebacc-switch/src/cmd/midtask.rs"}}"#
+        ));
+    }
+
+    #[test]
+    fn the_windows_binary_counts_too() {
+        assert!(about_us(
+            r#"{"tool_name":"Bash","tool_input":{"command":"\"C:\\Users\\x\\.claude-tools\\kebacc-switch.exe\" doctor"}}"#
         ));
     }
 

@@ -120,6 +120,16 @@ fi
 # switcher sharing the machine reads to know it is here.
 printf '%s' "$version" > "$tools_dir/$(kebacc_marker "$plugin")"
 
+# The commands that only mean something with both pools present. Neither plugin
+# owns them, so whichever installer finds the other half already there puts them
+# in - and this runs after the marker above, or it would not count itself.
+if [ -d "$here/src/commands-all" ]; then
+    synced=$(kebacc_sync_all_commands "$command_target" "$here/src/commands-all" "$tools_dir")
+    if [ "$synced" -gt 0 ] && kebacc_both_installed "$tools_dir"; then
+        green "Installed the $synced command(s) that span both pools"
+    fi
+fi
+
 # `kebacc-codex` as a shell function rather than a directory on the PATH. Same
 # name and same body as the other plugin writes, so whichever runs second finds
 # the line already there and leaves it alone.

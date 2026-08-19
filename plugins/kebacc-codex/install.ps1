@@ -126,6 +126,17 @@ if (Test-Path -LiteralPath $commandSource) {
 # switcher sharing the machine reads to know it is here.
 Set-Content -LiteralPath (Join-Path $ToolsDir $script:KebaccMarkers[$pluginId]) -Value $version -NoNewline -Encoding utf8
 
+# The commands that only mean something with both pools present. Neither plugin
+# owns them, so whichever installer finds the other half already there puts them
+# in - and this runs after the marker above, or it would not count itself.
+$allSource = Join-Path $source 'commands-all'
+if (Test-Path -LiteralPath $allSource) {
+    $synced = Sync-KebaccAllCommands -CommandTarget $commandTarget -AllSource $allSource -Installed @(Get-KebaccInstalled -ToolsDir $ToolsDir)
+    if ($synced.Both -and $synced.Touched) {
+        Say "Installed the $($synced.Touched) command(s) that span both pools" Green
+    }
+}
+
 # `kebacc-codex` as a shell function rather than a directory on the PATH. Same
 # name and same body as the other plugin writes, so whichever runs second finds
 # the line already there and leaves it alone.

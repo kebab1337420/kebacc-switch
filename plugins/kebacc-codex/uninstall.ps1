@@ -40,6 +40,16 @@ if (-not $Yes) {
 # whether or not the other half is there.
 $ours = @($script:KebaccMarkers[$pluginId], $exeName, "$exeName.old",
           '.update-codex.json', 'update-codex.stamp')
+
+# The status line comes out through the binary, while there still is one: it is
+# the only side that knows which status line ours displaced when it was armed,
+# and putting that one back is the whole point of having kept it. The block
+# further down is what runs when this is reached with the binary already gone.
+$entry = Join-Path $ToolsDir $exeName
+if (Test-Path -LiteralPath $entry -PathType Leaf) {
+    & $entry wire -NoStatusLine -Quiet > $null 2>&1
+}
+
 if (Test-Path -LiteralPath $ToolsDir) {
     $removed = 0
     foreach ($name in $ours) {

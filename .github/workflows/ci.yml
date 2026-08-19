@@ -98,12 +98,19 @@ jobs:
           export KEBACC_SWITCH_CODEX_ACCOUNTS="$sandbox/codex-accounts"
           mkdir -p "$HOME" "$CLAUDE_CONFIG_DIR"
           echo '{"model":"opus"}' > "$CLAUDE_CONFIG_DIR/settings.json"
+          # The Claude half, as far as this half can tell it is there: its
+          # marker is what makes the commands spanning both pools mean anything.
+          mkdir -p "$HOME/.claude-tools"
+          printf '0.0.0' > "$HOME/.claude-tools/.version"
 
           sh plugins/kebacc-codex/install.sh --binary target/release/kebacc-codex --status-line --auto-switch
 
           test -x "$HOME/.claude-tools/kebacc-codex"
           test "$(cat "$HOME/.claude-tools/.codex-version")" = "$(cat plugins/kebacc-codex/VERSION)"
           test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-codex.md"
+          # Both halves are there, so the pair that spans them is too.
+          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-all.md"
+          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-auto-all.md"
           grep -q '"model": *"opus"' "$CLAUDE_CONFIG_DIR/settings.json"
           grep -q 'statusLine' "$CLAUDE_CONFIG_DIR/settings.json"
           grep -q 'SessionStart' "$CLAUDE_CONFIG_DIR/settings.json"
@@ -117,6 +124,9 @@ jobs:
 
           test ! -e "$HOME/.claude-tools/kebacc-codex"
           test ! -e "$CLAUDE_CONFIG_DIR/commands/kebacc-list-codex.md"
+          # With one half gone the pair that spans both means nothing.
+          test ! -e "$CLAUDE_CONFIG_DIR/commands/kebacc-list-all.md"
+          test ! -e "$CLAUDE_CONFIG_DIR/commands/kebacc-auto-all.md"
           ! grep -q 'statusLine' "$CLAUDE_CONFIG_DIR/settings.json"
           ! grep -q 'auto -Provider' "$CLAUDE_CONFIG_DIR/settings.json"
           ! cat "$HOME"/.zshrc "$HOME"/.bashrc "$HOME"/.profile 2>/dev/null |
@@ -137,7 +147,13 @@ jobs:
           $env:KEBACC_SWITCH_CODEX_ACCOUNTS = Join-Path $sandbox 'codex-accounts'
           New-Item -ItemType Directory -Path $env:CLAUDE_CONFIG_DIR -Force | Out-Null
           $settingsPath = Join-Path $env:CLAUDE_CONFIG_DIR 'settings.json'
-          '{"model":"opus"}' | Set-Content -LiteralPath $settingsPath
+          # A status line somebody else holds: ours displaces it on the way in
+          # and has to hand it back on the way out.
+          '{"model":"opus","statusLine":{"type":"command","command":"starship prompt"}}' | Set-Content -LiteralPath $settingsPath
+          # The Claude half, as far as this half can tell it is there: its
+          # marker is what makes the commands spanning both pools mean anything.
+          New-Item -ItemType Directory -Path $tools -Force | Out-Null
+          Set-Content -LiteralPath (Join-Path $tools '.version') -Value '0.0.0' -NoNewline
 
           pwsh -NoProfile -File plugins/kebacc-codex/install.ps1 -ToolsDir $tools -Binary target/release/kebacc-codex.exe -StatusLine -AutoSwitch -NoProfileEdit
           if ($LASTEXITCODE -ne 0) { throw "install.ps1 exited $LASTEXITCODE" }
@@ -147,20 +163,31 @@ jobs:
           foreach ($needle in 'statusLine', 'SessionStart', 'PreToolUse', '-Midtask', '"opus"') {
             if ($settings -notmatch [regex]::Escape($needle)) { throw "settings.json is missing $needle" }
           }
-          if (-not (Test-Path -LiteralPath (Join-Path $env:CLAUDE_CONFIG_DIR 'commands/kebacc-list-codex.md'))) {
-            throw 'The slash commands were not installed'
+          foreach ($name in 'kebacc-list-codex.md', 'kebacc-list-all.md', 'kebacc-auto-all.md') {
+            if (-not (Test-Path -LiteralPath (Join-Path $env:CLAUDE_CONFIG_DIR "commands/$name"))) {
+              throw "$name was not installed"
+            }
           }
 
           pwsh -NoProfile -File plugins/kebacc-codex/uninstall.ps1 -ToolsDir $tools -NoProfileEdit -Yes
           if ($LASTEXITCODE -ne 0) { throw "uninstall.ps1 exited $LASTEXITCODE" }
 
           $settings = Get-Content -LiteralPath $settingsPath -Raw
-          # Neither hook may outlive the binary they point at.
-          foreach ($needle in 'statusLine', 'SessionStart', 'PreToolUse') {
+          # Neither hook may outlive the binary they point at, and nothing of
+          # ours may be left in the status line either.
+          foreach ($needle in 'kebacc-codex', 'SessionStart', 'PreToolUse') {
             if ($settings -match [regex]::Escape($needle)) { throw "uninstall.ps1 left $needle behind" }
           }
           if (Test-Path -LiteralPath (Join-Path $tools 'kebacc-codex.exe')) { throw 'the binary is still there' }
-          Write-Host 'installed and uninstalled cleanly'
+          $line = ($settings | ConvertFrom-Json).statusLine.command
+          if ($line -ne 'starship prompt') { throw "the displaced status line did not come back: $line" }
+          # With one half gone the pair that spans both means nothing.
+          foreach ($name in 'kebacc-list-all.md', 'kebacc-auto-all.md') {
+            if (Test-Path -LiteralPath (Join-Path $env:CLAUDE_CONFIG_DIR "commands/$name")) {
+              throw "$name outlived the uninstall"
+            }
+          }
+          Write-Host 'installed and uninstalled cleanly, and starship has its status line back'
 
       # The published binary and the one-command install are what most people
       # will actually run, so the newest release is installed here the way they

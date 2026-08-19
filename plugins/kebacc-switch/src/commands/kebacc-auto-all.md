@@ -1,13 +1,13 @@
 ---
 description: Arm the auto-switch for both pools, at session start and mid-task
-allowed-tools: Bash(~/.claude-tools/kebacc-switch:*), Bash(~/.claude-tools/kebacc-switch.exe:*), Bash(~/.kebacc-codex/bin/kebacc-codex:*), Bash(~/.kebacc-codex/bin/kebacc-codex.exe:*)
+allowed-tools: Bash(~/.claude-tools/kebacc-switch:*), Bash(~/.claude-tools/kebacc-switch.exe:*), Bash(~/.claude-tools/kebacc-codex:*), Bash(~/.claude-tools/kebacc-codex.exe:*)
 ---
 
 Two pools, two binaries, one pair of hooks each. Run both, `.exe` on Windows:
 
 ```
 ~/.claude-tools/kebacc-switch arm -Provider claude
-~/.kebacc-codex/bin/kebacc-codex arm -Provider codex
+~/.claude-tools/kebacc-codex arm -Provider codex
 ```
 
 `kebacc-codex` is a separate plugin. If it is not installed, say so in one line

@@ -155,7 +155,9 @@ jobs:
           $env:KEBACC_SWITCH_ACCOUNTS = Join-Path $sandbox 'accounts'
           New-Item -ItemType Directory -Path $env:CLAUDE_CONFIG_DIR -Force | Out-Null
           $settingsPath = Join-Path $env:CLAUDE_CONFIG_DIR 'settings.json'
-          '{"model":"opus"}' | Set-Content -LiteralPath $settingsPath
+          # A status line somebody else holds: ours displaces it on the way in
+          # and has to hand it back on the way out.
+          '{"model":"opus","statusLine":{"type":"command","command":"starship prompt"}}' | Set-Content -LiteralPath $settingsPath
 
           pwsh -NoProfile -File plugins/kebacc-switch/install.ps1 -ToolsDir $tools -Binary target/release/kebacc-switch.exe -StatusLine -AutoSwitch claude -NoProfileEdit
           if ($LASTEXITCODE -ne 0) { throw "install.ps1 exited $LASTEXITCODE" }
@@ -170,12 +172,15 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "uninstall.ps1 exited $LASTEXITCODE" }
 
           $settings = Get-Content -LiteralPath $settingsPath -Raw
-          # Neither hook may outlive the binary they point at.
-          foreach ($needle in 'statusLine', 'SessionStart', 'PreToolUse') {
+          # Neither hook may outlive the binary they point at, and nothing of
+          # ours may be left in the status line either.
+          foreach ($needle in 'kebacc-switch', 'SessionStart', 'PreToolUse') {
             if ($settings -match [regex]::Escape($needle)) { throw "uninstall.ps1 left $needle behind" }
           }
           if (Test-Path -LiteralPath (Join-Path $tools 'kebacc-switch.exe')) { throw 'the binary is still there' }
-          Write-Host 'installed and uninstalled cleanly'
+          $line = ($settings | ConvertFrom-Json).statusLine.command
+          if ($line -ne 'starship prompt') { throw "the displaced status line did not come back: $line" }
+          Write-Host 'installed and uninstalled cleanly, and starship has its status line back'
 
       # The published binary and the one-command install are what most people
       # will actually run, so the newest release is installed here the way they

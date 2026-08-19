@@ -1,9 +1,10 @@
 # Installs the Codex switcher, which lives on its own branch.
 #
 # kebacc-switch handles Claude and nothing else. Codex has a plugin of its own,
-# built from the `Codex` branch of the same repository, and it keeps to its own
-# directory: ~/.kebacc-codex holds its binary and its pool, and ~/.claude-tools
-# stays kebacc-switch's alone.
+# built from the `Codex` branch of the same repository. It installs into
+# ~/.claude-tools beside this one, under its own name and its own version
+# marker: the two share the directory and nothing else, and each uninstaller
+# names its own files rather than sweeping the directory.
 #
 # There is no published release for it, so this clones the branch, builds it
 # with cargo and hands the binary to the branch's own installer. Run it again to
@@ -11,7 +12,7 @@
 [CmdletBinding()]
 param(
     # Where the binary goes. Left empty on purpose: the branch's own installer
-    # picks ~/.kebacc-codex/bin, and only an explicit value overrides it.
+    # picks ~/.claude-tools, and only an explicit value overrides it.
     [string]$ToolsDir,
     # Where the branch comes from. A local checkout works as well as the URL,
     # which is what to pass when the branch has not been pushed yet.

@@ -35,9 +35,14 @@ if [ -x "$entry" ]; then
     # -Drop rather than off: it takes this pool out and leaves anything else
     # armed, where off disarms whatever it finds.
     "$entry" arm -Provider claude -Drop -Quiet > /dev/null 2>&1 || true
-    # -AutoUpdate takes KEBACC_SWITCH_UPDATE back out: it is a setting about a
-    # binary that is about to be gone, and it would silence the next install.
-    "$entry" wire -NoStatusLine -AutoUpdate > /dev/null 2>&1 || true
+    "$entry" wire -NoStatusLine -Quiet > /dev/null 2>&1 || true
+    # KEBACC_SWITCH_UPDATE is a setting about a binary that is about to be gone,
+    # and left there it would silence the next install. kebacc-codex reads the
+    # same name, so it stays while that half is installed: turning its updates
+    # back on is not this uninstaller's call.
+    if [ ! -e "$tools_dir/.codex-version" ]; then
+        "$entry" wire -AutoUpdate -Quiet > /dev/null 2>&1 || true
+    fi
 fi
 
 # Named one by one: ~/.claude-tools is shared with kebacc-codex, and a sweep

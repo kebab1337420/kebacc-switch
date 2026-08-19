@@ -365,7 +365,10 @@ mod tests {
     #[test]
     fn the_mid_task_line_carries_the_flag_and_the_matcher() {
         let command = line("kebacc-switch", "claude", true);
-        assert_eq!(command, "kebacc-switch auto -Provider claude -Hook -Midtask");
+        assert_eq!(
+            command,
+            "kebacc-switch auto -Provider claude -Hook -Midtask"
+        );
         let mut settings = json!({});
         add(&mut settings, PRE_TOOL_USE, Some("*"), &command, 10);
         assert_eq!(settings["hooks"]["PreToolUse"][0]["matcher"], "*");

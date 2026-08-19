@@ -1,6 +1,6 @@
 ---
 description: Install the Codex switcher, which lives on its own branch
-allowed-tools: Bash(pwsh:*), Bash(~/.kebacc-codex/bin/kebacc-codex:*), Bash(~/.kebacc-codex/bin/kebacc-codex.exe:*)
+allowed-tools: Bash(pwsh:*), Bash(~/.claude-tools/kebacc-codex:*), Bash(~/.claude-tools/kebacc-codex.exe:*)
 ---
 
 Run:
@@ -13,8 +13,8 @@ The installer is taken from the repository each time rather than from disk, so
 this works on an install that predates it and never runs a stale copy.
 
 It clones the `Codex` branch, builds `kebacc-codex` with cargo and installs it
-under `~/.kebacc-codex`: its own binary, its own pool, its own `*-codex` slash
-commands. It needs `git` and `cargo`, and takes a minute the first time. Nothing
+into `~/.claude-tools` beside this one: its own binary, its own pool, its own
+`*-codex` slash commands, and neither half reads the other's. It needs `git` and `cargo`, and takes a minute the first time. Nothing
 on the Claude side is touched, and running it again is how it updates.
 
 To arm the session-start auto-switch for the Codex pool at the same time, add

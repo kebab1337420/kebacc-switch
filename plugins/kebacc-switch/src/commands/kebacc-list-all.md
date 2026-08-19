@@ -1,13 +1,13 @@
 ---
 description: Every saved account, Claude and Codex, fresh numbers and time to reset
-allowed-tools: Bash(~/.claude-tools/kebacc-switch:*), Bash(~/.claude-tools/kebacc-switch.exe:*), Bash(~/.kebacc-codex/bin/kebacc-codex:*), Bash(~/.kebacc-codex/bin/kebacc-codex.exe:*)
+allowed-tools: Bash(~/.claude-tools/kebacc-switch:*), Bash(~/.claude-tools/kebacc-switch.exe:*), Bash(~/.claude-tools/kebacc-codex:*), Bash(~/.claude-tools/kebacc-codex.exe:*)
 ---
 
 Two pools, two binaries. Run both, `.exe` on Windows:
 
 ```
 ~/.claude-tools/kebacc-switch list -Provider claude -Refresh -Countdown
-~/.kebacc-codex/bin/kebacc-codex list -Refresh -Countdown
+~/.claude-tools/kebacc-codex list -Refresh -Countdown
 ```
 
 `kebacc-codex` is a separate plugin. If it is not installed, say so in one line

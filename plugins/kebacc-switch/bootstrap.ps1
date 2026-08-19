@@ -29,7 +29,8 @@ $asset = 'kebacc-switch-x86_64-pc-windows-msvc.exe'
 function Say { param([string]$Text, [string]$Color) if ($Color) { Write-Host $Text -ForegroundColor $Color } else { Write-Host $Text } }
 
 if (-not ($IsWindows -or $env:OS -eq 'Windows_NT')) {
-    Say 'Only Windows has a published binary. On macOS or Linux, clone the repository and run: cargo build --release, then plugins/kebacc-switch/install.ps1' Red
+    Say 'This is the Windows bootstrap. On macOS or Linux, run bootstrap.sh instead:' Red
+    Say '  curl -fsSL https://github.com/kebab1337420/kebacc-switch/releases/download/kebacc-switch-v0.2.5/bootstrap.sh | sh' Yellow
     exit 1
 }
 
@@ -41,6 +42,13 @@ $headers = @{
     'User-Agent' = 'kebacc-switch-bootstrap'
     'Accept'     = 'application/vnd.github+json'
 }
+
+# GitHub answers 403 rather than a rate-limit message once an address has asked
+# too often, which on a shared address can be the first request of the day. A
+# token in GITHUB_TOKEN or GH_TOKEN raises that limit; without one this asks
+# anonymously, which is enough for a machine installing this once.
+$token = if ($env:GITHUB_TOKEN) { $env:GITHUB_TOKEN } else { $env:GH_TOKEN }
+if ($token) { $headers['Authorization'] = "Bearer $token" }
 
 # /releases/latest skips prereleases, and this project has been one so far, so
 # the whole list is read and the newest published entry taken from it.
@@ -96,6 +104,7 @@ try {
     # after an asset is replaced. The API URL answers with the current one.
     $exe = Join-Path $work 'kebacc-switch.exe'
     $binaryHeaders = @{ 'User-Agent' = 'kebacc-switch-bootstrap'; 'Accept' = 'application/octet-stream' }
+    if ($token) { $binaryHeaders['Authorization'] = "Bearer $token" }
     Invoke-WebRequest -Uri $download.url -OutFile $exe -Headers $binaryHeaders
     if ((Get-Item -LiteralPath $exe).Length -lt 100KB) { throw "$asset came back too small to be the binary." }
 

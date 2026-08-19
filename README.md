@@ -19,8 +19,8 @@ between them when the one you are on runs out of quota.**
 
 A small Rust binary and a Claude Code plugin. It saves the login you are on,
 keeps the saved ones sealed on disk, reads each account's quota from the API,
-and moves you to one that still has room — on its own, at session start, before
-you notice you were capped.
+and moves you to one that still has room — on its own, at session start and
+again mid-task, before you notice you were capped.
 
 ```
 crates/kebacc-switch/    the binary
@@ -46,24 +46,36 @@ served through a cache that can be minutes behind, and an installer that
 sometimes runs yesterday's code is worse than one pinned to a release. A change
 to it therefore needs a fresh upload to reach anyone.
 
+### macOS and Linux, no toolchain
+
+```sh
+curl -fsSL https://github.com/kebab1337420/kebacc-switch/releases/download/kebacc-switch-v0.2.5/bootstrap.sh | sh
+```
+
+The same thing for Apple silicon, Intel Macs and x86_64 or arm64 Linux: it picks
+the binary for the machine it is on, unpacks the plugin from the source archive
+of that tag, and runs `install.sh`. Options go through after `sh -s --`, so
+`sh -s -- --status-line --auto-switch` works. Only `curl` and `tar` are needed.
+
 ### From source
 
 ```sh
 cargo build --release
-pwsh -NoProfile -File plugins/kebacc-switch/install.ps1
+pwsh -NoProfile -File plugins/kebacc-switch/install.ps1   # Windows
+sh plugins/kebacc-switch/install.sh                       # macOS, Linux
 ```
-
-This is the only route on macOS and Linux — no binary is published for them yet.
 
 The installer copies `target/release/kebacc-switch` into `~/.claude-tools`, then
 writes the hooks, the status line and the slash commands into your Claude Code
 settings. It backs the settings file up first and refuses to write a result that
-would not parse. `uninstall.ps1` takes all of it back out.
+would not parse. `uninstall.ps1`, or `uninstall.sh`, takes all of it back out.
 
-| Flag | Effect |
-| --- | --- |
-| `-NoAutoUpdate` | leave the daily self-update off |
-| `-NoProfileEdit` | do not touch the PowerShell profile |
+| Windows | macOS, Linux | Effect |
+| --- | --- | --- |
+| `-StatusLine` | `--status-line` | point the Claude Code status line at the switcher |
+| `-AutoSwitch claude` | `--auto-switch` | run `auto` at session start and mid-task |
+| `-NoAutoUpdate` | `--no-auto-update` | leave the daily self-update off |
+| `-NoProfileEdit` | `--no-profile-edit` | do not touch the shell profile |
 
 ---
 
@@ -99,9 +111,9 @@ nothing to pass and nothing else to run.
 
 | Command | What it does |
 | --- | --- |
-| `/kebacc-auto-claude` | arm the session-start auto-switch |
+| `/kebacc-auto-claude` | arm the auto-switch, session start and mid-task |
 | `/kebacc-auto-all` | the same, plus every other pool installed beside it |
-| `/kebacc-auto-toggle` | arm or disarm the session-start hook |
+| `/kebacc-auto-toggle` | arm or disarm both auto hooks |
 
 Neither of these changes the account in use. Arming decides what the *next*
 sessions open on. Only `/kebacc-switch-claude` moves the login you are on right
@@ -137,7 +149,7 @@ kebacc-switch add     -Provider claude               # save the current login
 kebacc-switch list    -Provider all -Refresh -Countdown
 kebacc-switch switch  -Provider claude -Email you@example.com
 kebacc-switch auto    -Provider all                  # switch only if capped
-kebacc-switch arm     -Provider claude                # arm the session-start switch, change nothing now
+kebacc-switch arm     -Provider claude                # arm the auto-switch, change nothing now
 kebacc-switch arm     -Provider off                   # disarm it
 kebacc-switch doctor  -Provider all
 kebacc-switch refresh -Provider all                  # re-read the quotas, print nothing

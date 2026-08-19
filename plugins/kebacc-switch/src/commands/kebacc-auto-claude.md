@@ -9,9 +9,13 @@ Run `~/.claude-tools/kebacc-switch`, or `~/.claude-tools/kebacc-switch.exe` on W
 ~/.claude-tools/kebacc-switch arm -Provider claude
 ```
 
-This only arms the session-start auto-switch. It never changes the account in
-use, whatever the quota says — only `/kebacc-switch-claude` does that. Armed
-means the next sessions open on an account that has room.
+This only arms the auto-switch. It never changes the account in use on its own,
+whatever the quota says at the moment you run it — only `/kebacc-switch-claude`
+does that on the spot.
+
+Armed means two things: the next sessions open on an account that has room, and
+a session already running moves to one when the current account runs out
+mid-task. It does not wait for Claude to be idle.
 
 Print the one line it prints and stop. Do not offer to switch, do not read the
 quota, do not suggest anything else.

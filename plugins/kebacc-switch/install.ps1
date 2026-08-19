@@ -18,7 +18,7 @@ param(
     # Point Claude Code's status line at the one shipped here. Off by default:
     # it is the only thing an install would change that the user can see.
     [switch]$StatusLine,
-    # Run `auto` once as each session starts, for these pools. Off by default:
+    # Run `auto` at session start and mid-task, for these pools. Off by default:
     # it changes which login the next session answers as.
     [ValidateSet('claude')]
     [string]$AutoSwitch,
@@ -208,30 +208,21 @@ if ($StatusLine) {
 }
 
 if ($AutoSwitch) {
-    $settings = Read-ClaudeSettings
-    # `-Hook` is what makes this safe to run at every session start: it prints
-    # nothing, where stdout would be fed to the model, and it exits 0, where a
+    # The binary writes the hooks itself, as `install.sh` has it do: a
+    # `SessionStart` one that opens each session on an account with room, and a
+    # `PreToolUse` one that keeps that true mid-run, so a quota that dies while
+    # Claude is working is noticed then and not at the next launch. Both carry
+    # `-Hook`, which is what makes them safe to run unattended: they print
+    # nothing, where stdout would be fed to the model, and exit 0, where a
     # non-zero exit would be shown to the user — which `auto` returns for a pool
     # too small to switch in, a normal state.
-    $hookCommand = "`"$command`" auto -Provider $AutoSwitch -Hook"
-
-    $hooks = if ($settings.PSObject.Properties['hooks']) { $settings.hooks } else { [pscustomobject]@{} }
-    # Anything this installed before is replaced, not stacked: running the
-    # installer twice must leave one hook, and switching scope must not keep the
-    # old scope running beside the new one.
-    $others = @()
-    if ($hooks.PSObject.Properties['SessionStart']) {
-        $others = @($hooks.SessionStart | Where-Object {
-            -not (@($_.hooks) | Where-Object { ("$($_.command)" -like '*kebacc-switch*auto*' -or "$($_.command)" -like '*claude-c*auto*') })
-        })
-    }
-    $group = [pscustomobject]@{
-        hooks = @([pscustomobject]@{ type = 'command'; command = $hookCommand; timeout = 25 })
-    }
-    $hooks | Add-Member -NotePropertyName SessionStart -NotePropertyValue ($others + $group) -Force
-    $settings | Add-Member -NotePropertyName hooks -NotePropertyValue $hooks -Force
-    Write-ClaudeSettings $settings
-    Say "Each session will now run: kebacc-switch auto -Provider $AutoSwitch" Green
+    #
+    # Anything armed before is replaced, not stacked: running the installer
+    # twice must leave one hook of each kind, and switching scope must not keep
+    # the old scope running beside the new one. `arm` handles that.
+    & $command arm -Provider $AutoSwitch -Quiet
+    if ($LASTEXITCODE -ne 0) { throw "Could not arm the auto-switch for '$AutoSwitch'." }
+    Say "auto -Provider $AutoSwitch is armed, at session start and mid-task" Green
 }
 
 if ($NoAutoUpdate) {

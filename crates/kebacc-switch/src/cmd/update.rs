@@ -121,7 +121,7 @@ pub fn maybe() {
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    super::midtask::detach(&mut command);
+    crate::proc::detach(&mut command);
     let _ = command.spawn();
 }
 
@@ -247,10 +247,7 @@ fn asset_of(release: &Value, wanted: &str) -> Option<Asset> {
         .iter()
         .find(|asset| asset.get("name").and_then(Value::as_str) == Some(wanted))?;
     Some(Asset {
-        url: found
-            .get("browser_download_url")
-            .and_then(Value::as_str)?
-            .to_string(),
+        url: found.get("url").and_then(Value::as_str)?.to_string(),
         digest: found
             .get("digest")
             .and_then(Value::as_str)
@@ -338,6 +335,7 @@ fn download(url: &str) -> Result<Vec<u8>, String> {
     let mut response = usage::agent_with_timeout(DOWNLOAD_SECONDS)
         .get(url)
         .header("User-Agent", &format!("kebacc-switch/{}", version()))
+        .header("Accept", "application/octet-stream")
         .call()
         .map_err(|_| format!("Could not download {url}."))?;
     if !response.status().is_success() {
@@ -446,10 +444,10 @@ mod tests {
     #[test]
     fn a_release_without_a_digest_still_yields_an_asset() {
         let release = serde_json::json!({
-            "assets": [{ "name": "kebacc-switch-x", "browser_download_url": "https://example/x" }]
+            "assets": [{ "name": "kebacc-switch-x", "url": "https://api/assets/1" }]
         });
         let asset = asset_of(&release, "kebacc-switch-x").expect("asset");
-        assert_eq!(asset.url, "https://example/x");
+        assert_eq!(asset.url, "https://api/assets/1");
         assert!(asset.digest.is_none());
     }
 
@@ -458,12 +456,25 @@ mod tests {
         let release = serde_json::json!({
             "assets": [{
                 "name": "kebacc-switch-x",
-                "browser_download_url": "https://example/x",
+                "url": "https://api/assets/1",
                 "digest": "sha256:AB12"
             }]
         });
         let asset = asset_of(&release, "kebacc-switch-x").expect("asset");
         assert_eq!(asset.digest.as_deref(), Some("ab12"));
+    }
+
+    #[test]
+    fn the_cached_download_url_is_not_the_one_used() {
+        let release = serde_json::json!({
+            "assets": [{
+                "name": "kebacc-switch-x",
+                "url": "https://api/assets/1",
+                "browser_download_url": "https://cdn/x"
+            }]
+        });
+        let asset = asset_of(&release, "kebacc-switch-x").expect("asset");
+        assert_eq!(asset.url, "https://api/assets/1");
     }
 
     #[test]

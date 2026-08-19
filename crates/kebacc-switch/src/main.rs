@@ -3,6 +3,7 @@ mod jsonio;
 mod live;
 mod lock;
 mod pool;
+mod proc;
 mod provider;
 mod seal;
 mod term;
@@ -77,6 +78,8 @@ fn dispatch(args: &[String]) -> i32 {
             | "update"
             | "refresh"
             | "arm"
+            | "gitstat"
+            | "wire"
     ) {
         say(&format!("Unknown command '{command}'."), Color::Red);
         usage_text();
@@ -87,6 +90,13 @@ fn dispatch(args: &[String]) -> i32 {
         return cmd::statusline::run();
     }
 
+    if command == "gitstat" {
+        let Some(root) = args.get(1) else {
+            return 64;
+        };
+        return cmd::statusline::gitstat(std::path::Path::new(root));
+    }
+
     let (wanted, mut options) = match parse(&args[1..]) {
         Ok(parsed) => parsed,
         Err(problem) => {
@@ -94,6 +104,10 @@ fn dispatch(args: &[String]) -> i32 {
             return 64;
         }
     };
+
+    if command == "wire" {
+        return cmd::wire::run(options.statusline, options.updates, options.quiet);
+    }
 
     if command == "arm" {
         return cmd::arm::run(&wanted, options.quiet);
@@ -191,6 +205,10 @@ fn parse(tokens: &[String]) -> Result<(String, Options), String> {
             "midtask" => options.midtask = true,
             "check" => options.check = true,
             "spawned" => options.spawned = true,
+            "statusline" => options.statusline = Some(true),
+            "nostatusline" => options.statusline = Some(false),
+            "autoupdate" => options.updates = Some(true),
+            "noautoupdate" => options.updates = Some(false),
             other => return Err(format!("Unknown option '-{other}'.")),
         }
     }

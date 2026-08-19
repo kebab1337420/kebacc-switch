@@ -528,7 +528,7 @@ fn dirty(root: &Path, git_dir: &Path, head_moved: Option<std::time::SystemTime>)
     if let Some((dirty, true)) = known {
         return Some(dirty);
     }
-    ask_git(&cache, root);
+    ask_git(root);
     known.map(|(dirty, _)| dirty)
 }
 
@@ -538,12 +538,24 @@ fn touched_since(git_dir: &Path, at: std::time::SystemTime) -> bool {
         .is_ok_and(|changed| changed > at)
 }
 
-fn ask_git(cache: &Path, root: &Path) {
-    let Ok(file) = std::fs::File::create(cache) else {
+fn ask_git(root: &Path) {
+    let Ok(exe) = std::env::current_exe() else {
         return;
     };
-    let mut command = std::process::Command::new("git");
+    let mut command = std::process::Command::new(exe);
     command
+        .arg("gitstat")
+        .arg(root)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    crate::proc::detach(&mut command);
+    let _ = command.spawn();
+}
+
+pub fn gitstat(root: &Path) -> i32 {
+    let mut git = std::process::Command::new("git");
+    let answer = crate::proc::hidden(&mut git)
         .args([
             "--no-optional-locks",
             "status",
@@ -552,10 +564,14 @@ fn ask_git(cache: &Path, root: &Path) {
         ])
         .current_dir(root)
         .stdin(std::process::Stdio::null())
-        .stdout(std::process::Stdio::from(file))
-        .stderr(std::process::Stdio::null());
-    crate::cmd::midtask::detach(&mut command);
-    let _ = command.spawn();
+        .stderr(std::process::Stdio::null())
+        .output();
+    let text = match answer {
+        Ok(done) => String::from_utf8_lossy(&done.stdout).into_owned(),
+        Err(_) => String::new(),
+    };
+    let _ = crate::jsonio::write_text(&dirty_cache_file(root), &text);
+    0
 }
 
 fn dirty_cache_file(root: &Path) -> PathBuf {

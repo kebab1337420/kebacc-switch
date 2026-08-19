@@ -20,9 +20,10 @@ Run `~/.claude-tools/kebacc-switch`, or `~/.claude-tools/kebacc-switch.exe` on W
   something is. `~/.claude-tools/kebacc-switch doctor -Provider claude` says
   which it is; the status line's `auto …` segment says the same.
 
-The command writes the `SessionStart` hook in `~/.claude/settings.json` itself,
-leaving every other hook alone. It never changes the account in use — only
-`/kebacc-switch-claude` does that.
+The command writes both of its hooks in `~/.claude/settings.json` itself — the
+`SessionStart` one and the `PreToolUse` one that lets it act mid-task — leaving
+every other hook alone. It never changes the account in use on its own; only
+`/kebacc-switch-claude` does that on the spot.
 
 Print the one line it prints and stop. Nothing else — no explanation of what the
 switch does, no suggestion to add accounts, no question.

@@ -105,6 +105,6 @@ fn spawn() {
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    crate::cmd::midtask::detach(&mut command);
+    crate::proc::detach(&mut command);
     let _ = command.spawn();
 }

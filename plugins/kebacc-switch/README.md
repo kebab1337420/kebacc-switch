@@ -83,12 +83,22 @@ The slash commands `/kebacc-auto-claude` and `/kebacc-auto-toggle` are that
 command; switching the live login is `/kebacc-switch-claude`, and nothing
 else.
 
-`install.ps1 -AutoSwitch all` writes one `SessionStart` hook into
-`~/.claude/settings.json`, so `auto` runs once as each Claude Code session
-starts: a session that would have opened on a capped account opens on a free one
-instead.
-Installing again replaces that hook rather than adding a second one, and
-`uninstall.ps1` takes it back out. There is no watcher and no daemon: apart from
+`install.ps1 -AutoSwitch claude` writes a pair of hooks into
+`~/.claude/settings.json`:
+
+- `SessionStart`, so `auto` runs once as each Claude Code session starts: a
+  session that would have opened on a capped account opens on a free one
+  instead.
+- `PreToolUse`, matching every tool, so an account that runs out *during* a task
+  is left behind there and then. Without it a long job sits on a capped account
+  until the session ends. This hook does no work of its own: it reads a stamp
+  file, and at most once every five minutes
+  (`KEBACC_SWITCH_MIDTASK_INTERVAL_MS`) it spawns a detached `auto`, so the tool
+  call it runs in front of is never held up. A tool call that is itself a
+  switcher command is skipped — you asked to look, not to move.
+
+Installing again replaces those hooks rather than adding more, and
+`uninstall.ps1` takes both back out. There is no watcher and no daemon: apart from
 the short refresh the status line spawns for itself, between two sessions
 nothing of this is running.
 
@@ -96,8 +106,8 @@ nothing of this is running.
 
 `install.ps1 -StatusLine` points Claude Code's status line at `kebacc-switch
 statusline`, which reads the payload on stdin and prints one line. It draws the account in use and its two windows, how
-many saved logins still have room and, when the `SessionStart` hook is in
-place, what the switch is armed for:
+many saved logins still have room and, when the hooks are in place, what the
+switch is armed for:
 
 ```
 you · 5h 43% / 7d 69% · 2/3 free · auto claude
@@ -155,13 +165,19 @@ read. `list`, `switch` and `doctor` report an entry that does not verify;
 
 Nothing at run time: the binary carries what it needs, and it talks to DPAPI, to
 the Keychain or to libsecret through whatever the platform already has.
-PowerShell 7 (`pwsh`) is needed to run `install.ps1` and `uninstall.ps1`, and a
-Rust toolchain to build the crate.
+PowerShell 7 (`pwsh`) is needed to run `install.ps1` and `uninstall.ps1` on
+Windows; on macOS and Linux the same work is done by `install.sh` and
+`uninstall.sh`, which need nothing beyond a POSIX shell. A Rust toolchain is
+needed only to build the crate: the releases carry a binary for Windows, for
+both kinds of Mac and for x86_64 and arm64 Linux, and `bootstrap.sh` fetches the
+right one.
 
 ## Layout
 
 ```
-install.ps1 / uninstall.ps1     put it down, take it back
+install.ps1 / uninstall.ps1     put it down, take it back, on Windows
+install.sh / uninstall.sh       the same, on macOS and Linux
+bootstrap.ps1 / bootstrap.sh    install from a release, with no clone
 src/commands/*.md               the slash commands
 crates/kebacc-switch/src/main.rs    the entry point, and `-Provider all`
 crates/kebacc-switch/src/provider.rs   what each CLI keeps on disk

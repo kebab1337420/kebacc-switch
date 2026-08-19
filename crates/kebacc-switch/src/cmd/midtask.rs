@@ -85,20 +85,9 @@ fn spawn(provider: &str) {
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
-    detach(&mut command);
+    crate::proc::detach(&mut command);
     let _ = command.spawn();
 }
-
-#[cfg(windows)]
-pub fn detach(command: &mut Command) {
-    use std::os::windows::process::CommandExt;
-    const DETACHED_PROCESS: u32 = 0x0000_0008;
-    const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-    command.creation_flags(DETACHED_PROCESS | CREATE_NO_WINDOW);
-}
-
-#[cfg(not(windows))]
-pub fn detach(_command: &mut Command) {}
 
 #[cfg(test)]
 mod tests {

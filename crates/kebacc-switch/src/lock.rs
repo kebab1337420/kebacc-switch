@@ -120,7 +120,8 @@ fn pid_alive(pid: i32) -> bool {
 
 #[cfg(all(not(windows), not(target_os = "linux")))]
 fn pid_alive(pid: i32) -> bool {
-    std::process::Command::new("kill")
+    let mut kill = std::process::Command::new("kill");
+    crate::proc::hidden(&mut kill)
         .args(["-0", &pid.to_string()])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())

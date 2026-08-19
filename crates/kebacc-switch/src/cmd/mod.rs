@@ -10,6 +10,7 @@ pub mod remove;
 pub mod statusline;
 pub mod switch;
 pub mod update;
+pub mod wire;
 
 use crate::live;
 use crate::pool::Entry;
@@ -30,6 +31,8 @@ pub struct Options {
     pub midtask: bool,
     pub check: bool,
     pub spawned: bool,
+    pub statusline: Option<bool>,
+    pub updates: Option<bool>,
 }
 
 pub fn current<'a>(provider: &Provider, pool: &'a [Entry]) -> Option<&'a Entry> {

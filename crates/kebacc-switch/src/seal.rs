@@ -37,7 +37,8 @@ pub fn backend() -> Backend {
 }
 
 fn which(cmd: &str) -> bool {
-    std::process::Command::new(cmd)
+    let mut probe = std::process::Command::new(cmd);
+    crate::proc::hidden(&mut probe)
         .arg("--version")
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
@@ -95,7 +96,8 @@ fn secret_key(create: bool) -> Option<Vec<u8>> {
         _ => return None,
     };
 
-    if let Ok(out) = std::process::Command::new(tool).args(&read).output() {
+    let mut reader = std::process::Command::new(tool);
+    if let Ok(out) = crate::proc::hidden(&mut reader).args(&read).output() {
         let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
         if !text.is_empty() {
             if let Ok(key) = B64.decode(text.as_bytes()) {
@@ -133,7 +135,8 @@ pub fn secret_via_stdin(tool: &str, args: &[&str], text: &str) -> bool {
 
 fn write_stdin(tool: &str, args: &[&str], text: &str) -> bool {
     use std::io::Write;
-    let child = std::process::Command::new(tool)
+    let mut writer = std::process::Command::new(tool);
+    let child = crate::proc::hidden(&mut writer)
         .args(args)
         .stdin(std::process::Stdio::piped())
         .stdout(std::process::Stdio::null())

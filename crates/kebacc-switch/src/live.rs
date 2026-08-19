@@ -46,7 +46,8 @@ fn read_creds_raw(provider: &Provider) -> Option<String> {
     let file = provider.cred_file();
     if provider.uses_keychain && !file.exists() {
         let service = provider.keychain_service?;
-        let out = std::process::Command::new("security")
+        let mut security = std::process::Command::new("security");
+        let out = crate::proc::hidden(&mut security)
             .args(["find-generic-password", "-s", service, "-w"])
             .output()
             .ok()?;

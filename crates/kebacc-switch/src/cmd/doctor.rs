@@ -9,6 +9,8 @@ use crate::term::{say, Color};
 use serde_json::Value;
 use std::path::{Path, PathBuf};
 
+const GIT_CACHE_KEEP_DAYS: u64 = 30;
+
 const STALE_NAMES: [&str; 6] = [
     ".threads.state",
     ".watch.pid",
@@ -291,13 +293,34 @@ fn check_settings(report: &mut Report) {
             "{count} session hooks run auto. Reinstall with -AutoSwitch to leave one."
         )),
     }
+
+    let midtask = midtask_hooks(&settings);
+    match midtask.len() {
+        0 => report.warn(
+            "auto only runs between sessions. Re-arm it to also run mid-task: /kebacc-auto-claude",
+        ),
+        1 => report.good("auto also runs mid-task, before each tool call"),
+        count => report.warn(&format!(
+            "{count} mid-task hooks run auto. Re-arm it to leave one: /kebacc-auto-claude"
+        )),
+    }
 }
 
 pub fn auto_hooks(settings: &Value) -> Vec<String> {
+    hooks_at(settings, "SessionStart")
+}
+
+/// The mid-task half: the `PreToolUse` hook that lets auto act while Claude is
+/// in the middle of a run, instead of waiting for the next session.
+pub fn midtask_hooks(settings: &Value) -> Vec<String> {
+    hooks_at(settings, "PreToolUse")
+}
+
+fn hooks_at(settings: &Value, event: &str) -> Vec<String> {
     let mut found = Vec::new();
     let Some(groups) = settings
         .get("hooks")
-        .and_then(|h| h.get("SessionStart"))
+        .and_then(|h| h.get(event))
         .and_then(Value::as_array)
     else {
         return found;
@@ -384,7 +407,37 @@ fn stale_files(provider: &Provider) -> Vec<PathBuf> {
             .into_iter()
             .filter(|p| p.to_string_lossy().ends_with(".json.bak")),
     );
+    out.extend(spent_git_caches(&provider::state_dir()));
     out
+}
+
+fn spent_git_caches(state: &Path) -> Vec<PathBuf> {
+    let Ok(dir) = std::fs::read_dir(state) else {
+        return Vec::new();
+    };
+    dir.filter_map(|entry| entry.ok())
+        .map(|entry| entry.path())
+        .filter(|path| {
+            let Some(name) = path.file_name().map(|n| n.to_string_lossy().to_string()) else {
+                return false;
+            };
+            if !name.ends_with(".txt") {
+                return false;
+            }
+            if name.starts_with("git-") {
+                return true;
+            }
+            name.starts_with("gitstat-") && untouched_for(path, GIT_CACHE_KEEP_DAYS)
+        })
+        .collect()
+}
+
+fn untouched_for(path: &Path, days: u64) -> bool {
+    std::fs::metadata(path)
+        .and_then(|meta| meta.modified())
+        .ok()
+        .and_then(|at| at.elapsed().ok())
+        .is_some_and(|age| age.as_secs() > days * 24 * 60 * 60)
 }
 
 fn on_path(cli: &str) -> bool {

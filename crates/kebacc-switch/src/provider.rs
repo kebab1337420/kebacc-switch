@@ -226,7 +226,8 @@ fn restrict(path: &Path, dir: bool) {
     } else {
         "*S-1-3-4:(F)"
     };
-    let _ = std::process::Command::new("icacls")
+    let mut icacls = std::process::Command::new("icacls");
+    let _ = crate::proc::hidden(&mut icacls)
         .arg(path)
         .args(["/inheritance:r", "/grant:r", grant])
         .stdout(std::process::Stdio::null())

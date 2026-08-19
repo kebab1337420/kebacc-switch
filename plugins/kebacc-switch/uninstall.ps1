@@ -1,5 +1,6 @@
 # Takes back what the installer put down. The saved logins are left alone: they
-# are the expensive thing to rebuild, and a reinstall finds them again.
+# are the expensive thing to rebuild, and a reinstall finds them again. So is
+# anything in $ToolsDir this plugin did not write, kebacc-codex included.
 [CmdletBinding()]
 param(
     [string]$ToolsDir = (Join-Path $HOME '.claude-tools'),
@@ -16,14 +17,43 @@ $claude = if ($env:CLAUDE_CONFIG_DIR) { $env:CLAUDE_CONFIG_DIR } else { Join-Pat
 function Say { param([string]$Text, [string]$Color) if ($Color) { Write-Host $Text -ForegroundColor $Color } else { Write-Host $Text } }
 
 if (-not $Yes) {
-    Say "This removes $ToolsDir, the slash commands and the profile function."
+    Say "This removes the switcher from $ToolsDir, the slash commands and the profile function."
     Say 'Saved logins are not touched.' DarkGray
     if ((Read-Host 'Continue? [y/N]') -notmatch '^(y|yes)$') { Say 'Nothing removed.'; exit 0 }
 }
 
+# Named one by one rather than removing the whole directory: kebacc-codex
+# installs its binary into this same $ToolsDir, and taking the directory would
+# uninstall a plugin nobody asked about.
+$exeName = if ($IsWindows -or $env:OS -eq 'Windows_NT') { 'kebacc-switch.exe' } else { 'kebacc-switch' }
+$ours = @(
+    $exeName, "$exeName.old", '.version', '.update.json', 'update.stamp',
+    'install-codex.ps1',
+    # The PowerShell and node versions this replaced.
+    'claude-cc.ps1', 'claude-cc-core.ps1', 'claude-cc-usage.ps1',
+    'claude-cc-pool.ps1', 'claude-cc-statusline.ps1', 'claude-cc-providers.ps1',
+    'kebacc-switch.ps1', 'statusline.js', 'claude-cc.js', 'package.json'
+)
 if (Test-Path -LiteralPath $ToolsDir) {
-    Remove-Item -LiteralPath $ToolsDir -Recurse -Force
-    Say "Removed $ToolsDir" Green
+    $removed = 0
+    foreach ($name in $ours) {
+        $file = Join-Path $ToolsDir $name
+        if (Test-Path -LiteralPath $file -PathType Leaf) {
+            Remove-Item -LiteralPath $file -Force
+            $removed++
+        }
+    }
+    # Half-finished updates: kebacc-switch.<pid>.new.
+    Get-ChildItem -LiteralPath $ToolsDir -Filter 'kebacc-switch.*.new' -File -ErrorAction Ignore |
+        ForEach-Object { Remove-Item -LiteralPath $_.FullName -Force; $removed++ }
+    if ($removed) { Say "Removed $removed file(s) from $ToolsDir" Green }
+    # Gone entirely when nothing else lives there.
+    if (-not (Get-ChildItem -LiteralPath $ToolsDir -Force -ErrorAction Ignore)) {
+        Remove-Item -LiteralPath $ToolsDir -Force
+        Say "Removed $ToolsDir" Green
+    } else {
+        Say "$ToolsDir kept: another plugin has files there." DarkGray
+    }
 }
 
 $commands = Join-Path $claude 'commands'
@@ -75,8 +105,12 @@ if (Test-Path -LiteralPath $settingsPath) {
         }
 
         $hooks = $settings.PSObject.Properties['hooks']
-        if ($hooks -and $hooks.Value.PSObject.Properties['SessionStart']) {
-            $all  = @($hooks.Value.SessionStart)
+        # `SessionStart` is where auto has always been armed; `PreToolUse` is
+        # where the mid-task half goes. Leaving either behind would keep a hook
+        # pointing at a binary this script is deleting.
+        foreach ($event in @('SessionStart', 'PreToolUse')) {
+            if (-not ($hooks -and $hooks.Value.PSObject.Properties[$event])) { continue }
+            $all  = @($hooks.Value.$event)
             # Every spelling this toolkit ever wrote: the binary, the 4.x
             # dispatcher, the 3.x script. Whatever else the user put there is
             # left where it is.
@@ -84,9 +118,9 @@ if (Test-Path -LiteralPath $settingsPath) {
                 -not (@($_.hooks) | Where-Object { ("$($_.command)" -like '*kebacc-switch*auto*' -or "$($_.command)" -like '*claude-c*auto*') })
             })
             if ($kept.Count -ne $all.Count) {
-                if ($kept.Count) { $hooks.Value.SessionStart = $kept }
-                else { $hooks.Value.PSObject.Properties.Remove('SessionStart') }
-                Say 'Removed the session hook from settings.json' Green
+                if ($kept.Count) { $hooks.Value.$event = $kept }
+                else { $hooks.Value.PSObject.Properties.Remove($event) }
+                Say "Removed the $event hook from settings.json" Green
                 $touched = $true
             }
         }
@@ -98,7 +132,7 @@ if (Test-Path -LiteralPath $settingsPath) {
             Copy-Item -LiteralPath $settingsPath -Destination "$settingsPath.cc-backup.prev" -Force
             $json = $settings | ConvertTo-Json -Depth 100
             try { $null = $json | ConvertFrom-Json } catch {
-                Say "Refusing to rewrite $settingsPath: the result would not parse. Nothing changed." Red
+                Say "Refusing to rewrite ${settingsPath}: the result would not parse. Nothing changed." Red
                 exit 1
             }
             [IO.File]::WriteAllText($settingsPath, $json, [Text.UTF8Encoding]::new($false))

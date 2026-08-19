@@ -100,21 +100,31 @@ if (Test-Path -LiteralPath $settingsPath) {
 
         $hooks = $settings.PSObject.Properties['hooks']
         if ($hooks) {
-            # Only the hooks running this binary are narrowed, and only their
-            # scope: whatever the Claude switcher armed under its own name is
-            # left alone. Forward slashes: the path ends up in JSON, where a
-            # backslash is an escape.
-            $entryPath = ((Join-Path $ToolsDir $exeName) -replace '\\', '/')
+            # Only the hooks running this binary: whatever the Claude switcher
+            # armed under its own name is left exactly as it is.
             $before = ($hooks.Value | ConvertTo-Json -Depth 100 -Compress)
-            $narrowed = Remove-KebaccAutoPool -Hooks $hooks.Value -Pool $pluginId -Entry $entryPath
+            Remove-KebaccAutoPool -Hooks $hooks.Value -Pool $pluginId
             if (($hooks.Value | ConvertTo-Json -Depth 100 -Compress) -ne $before) {
-                if ($narrowed) { Say "Narrowed the auto hooks to -Provider $narrowed" Green }
-                else { Say 'Removed the auto hooks from settings.json' Green }
+                Say 'Removed the auto hooks from settings.json' Green
                 $touched = $true
             }
             if (-not $hooks.Value.PSObject.Properties.Name.Count) {
                 $settings.PSObject.Properties.Remove('hooks')
             }
+        }
+
+        # KEBACC_SWITCH_UPDATE is a setting about a binary that is about to be
+        # gone, and left there it would silence the next install. The name is
+        # the one kebacc-switch reads too, so it stays while that half is
+        # installed: turning its updates back on is not this uninstaller's call.
+        $envBlock = $settings.PSObject.Properties['env']
+        if ($alone -and $envBlock -and $envBlock.Value.PSObject.Properties['KEBACC_SWITCH_UPDATE']) {
+            $envBlock.Value.PSObject.Properties.Remove('KEBACC_SWITCH_UPDATE')
+            if (-not $envBlock.Value.PSObject.Properties.Name.Count) {
+                $settings.PSObject.Properties.Remove('env')
+            }
+            Say 'Took KEBACC_SWITCH_UPDATE out of settings.json' Green
+            $touched = $true
         }
 
         # Only a status line running this binary: one pointing at kebacc-switch

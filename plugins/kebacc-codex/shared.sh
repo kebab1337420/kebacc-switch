@@ -32,7 +32,8 @@ kebacc_own_commands() {
         codex)
             printf '%s\n' kebacc-add-codex.md kebacc-list-codex.md \
                 kebacc-switch-codex.md kebacc-remove-codex.md \
-                kebacc-auto-codex.md kebacc-doctor-codex.md
+                kebacc-auto-codex.md kebacc-doctor-codex.md \
+                kebacc-update-codex.md
             ;;
         *)
             printf '%s\n' kebacc-add-claude.md kebacc-list-claude.md \

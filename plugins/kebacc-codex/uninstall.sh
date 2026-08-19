@@ -53,6 +53,12 @@ kebacc_has claude $installed && alone=no
 if [ -x "$entry" ]; then
     "$entry" arm -Provider "$plugin" -Drop -Quiet > /dev/null 2>&1 || true
     "$entry" wire -NoStatusLine > /dev/null 2>&1 || true
+    # KEBACC_SWITCH_UPDATE is about a binary that is about to be gone, and left
+    # there it would silence the next install. kebacc-switch reads the same
+    # name, so it stays while that half is installed.
+    if [ "$alone" = yes ]; then
+        "$entry" wire -AutoUpdate -Quiet > /dev/null 2>&1 || true
+    fi
 fi
 
 # The version marker goes first, so anything reading it after this point sees

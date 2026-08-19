@@ -100,6 +100,7 @@ Everything the plugin installs lives under the `/kebacc-` prefix.
 | `/kebacc-remove-codex` | forget a saved login; the live session is untouched |
 | `/kebacc-auto-codex` | arm or disarm the automatic switch |
 | `/kebacc-doctor-codex` | check the install, the pool and the session hook |
+| `/kebacc-update-codex` | install the newest release of this half |
 
 A list always asks the API rather than reading the cache, and prints both quota
 windows with the time left until each one resets.

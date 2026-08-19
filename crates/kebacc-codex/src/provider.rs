@@ -1,6 +1,12 @@
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+/// Left in a directory once its permissions have been cut down, so the next
+/// process does not spend an `icacls` finding out what this one already knows.
+/// The status line redraws several times a minute and each draw is a process, so
+/// without it that call happens over and over for no change at all.
+const PROTECTED_MARK: &str = ".protected";
+
 /// The only pool this build knows. The Claude half lives in its own plugin, on
 /// its own branch, and speaks to `~/.claude/.credentials.json` through its own
 /// binary; nothing here reads or writes it.
@@ -183,9 +189,26 @@ pub fn protect_dir_once(dir: &Path) {
     let Ok(mut done) = locked_down().lock() else {
         return;
     };
-    if done.insert(dir.to_path_buf()) {
-        restrict(dir, true);
+    if !done.insert(dir.to_path_buf()) {
+        return;
     }
+    let mark = dir.join(PROTECTED_MARK);
+    if mark.exists() {
+        return;
+    }
+    restrict(dir, true);
+    let _ = std::fs::write(&mark, b"");
+}
+
+/// The same, for a directory whose permissions are to be set again whatever the
+/// marker says: `doctor -Protect` is the repair, and it has to run even where a
+/// previous run left the mark behind.
+pub fn reprotect_dir(dir: &Path) {
+    if !dir.is_dir() {
+        return;
+    }
+    restrict(dir, true);
+    let _ = std::fs::write(dir.join(PROTECTED_MARK), b"");
 }
 
 #[cfg(windows)]

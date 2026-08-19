@@ -147,6 +147,13 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
         report.warn("The pool key is missing or unreadable: nothing can be verified.");
     }
 
+    // The repair, not the check: the pool and the state directory get their
+    // permissions set again, marker or no marker.
+    if opts.protect {
+        provider::reprotect_dir(&provider.store);
+        provider::reprotect_dir(&provider::state_dir());
+    }
+
     let mut plain = 0u32;
     for entry in store.entries() {
         let name = entry.file_name();

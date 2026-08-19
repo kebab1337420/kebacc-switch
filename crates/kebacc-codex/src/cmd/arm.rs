@@ -14,6 +14,10 @@ const MIDTASK_TIMEOUT: u64 = 10;
 /// `SessionStart` catches an account that was already out of quota; `PreToolUse`
 /// catches one that runs out halfway through a task, which is where a long job
 /// would otherwise sit on a capped account until the user noticed.
+/// The one pool this build can be armed on, under the name the hooks spell it
+/// with.
+const PROVIDER_POOL: &str = crate::provider::PROVIDER_ID;
+
 const EVENTS: [(&str, &str); 2] = [("SessionStart", ""), ("PreToolUse", " -Midtask")];
 
 /// What arming does to the scope already in the settings.
@@ -150,12 +154,19 @@ fn widen(existing: Option<&str>, adding: &str) -> String {
     }
 }
 
-/// The scope left once one pool is taken out of it. `None` means nothing is
-/// left to arm, and the caller drops the hooks entirely.
+/// The scope left once one pool is taken out of it. `None` means nothing is left
+/// to arm, and the caller drops the hooks entirely.
+///
+/// The hooks this rewrites all run this binary, and this binary carries one
+/// pool. So taking that pool out leaves a scope it could not answer to: a hook
+/// left behind saying `-Provider claude` runs *this* binary, which refuses that
+/// name and exits non-zero — at every session start and before every tool call,
+/// in front of the user. The other half's hooks run its own binary under its own
+/// name and were never touched here, so dropping ours takes nothing from it.
 fn narrow(existing: Option<&str>, removing: &str) -> Option<String> {
     let had = existing.map(|scope| scope.trim().to_lowercase())?;
     let pools: Vec<&str> = if had == "all" {
-        vec!["claude", "codex"]
+        vec!["claude", PROVIDER_POOL]
     } else {
         had.split('+').collect()
     };
@@ -164,13 +175,11 @@ fn narrow(existing: Option<&str>, removing: &str) -> Option<String> {
         .map(str::trim)
         .filter(|pool| !pool.is_empty() && *pool != removing)
         .collect();
-    if left.is_empty() {
+    // Whatever is left, this build can only be armed on its own pool.
+    if !left.contains(&PROVIDER_POOL) {
         return None;
     }
-    if left.contains(&"claude") && left.contains(&"codex") {
-        return Some("all".to_string());
-    }
-    Some(left.join("+"))
+    Some(PROVIDER_POOL.to_string())
 }
 
 /// Takes every auto hook out of the settings, on every event it is armed on,
@@ -272,6 +281,13 @@ fn command_for(exe: &str, scope: &str, flag: &str) -> String {
     format!("{exe} auto -Provider {scope} -Hook{flag}")
 }
 
+/// The binary the hooks should name when there is none already there to copy.
+///
+/// The copy running this, first: `arm` is what the installers call, they call it
+/// as the binary they just installed, and an installer pointed at a tools
+/// directory of its own has to arm that one and not whatever is in the default
+/// place. `~/.claude-tools` is the fallback for the case where the running path
+/// cannot be read at all.
 fn installed() -> PathBuf {
     let name = if cfg!(windows) {
         "kebacc-codex.exe"
@@ -279,9 +295,6 @@ fn installed() -> PathBuf {
         "kebacc-codex"
     };
     let tools = provider::home().join(".claude-tools").join(name);
-    if tools.exists() {
-        return tools;
-    }
     std::env::current_exe().unwrap_or(tools)
 }
 
@@ -409,8 +422,16 @@ mod tests {
     }
 
     #[test]
-    fn dropping_one_pool_leaves_the_other_armed() {
-        assert_eq!(narrow(Some("all"), "codex"), Some("claude".to_string()));
+    fn dropping_this_pool_out_of_a_wider_scope_disarms() {
+        // The hooks run this binary, and this binary has no claude pool: left
+        // armed on that name it would fail in front of the user every time.
+        assert_eq!(narrow(Some("all"), "codex"), None);
+        assert_eq!(narrow(Some("claude+codex"), "codex"), None);
+    }
+
+    #[test]
+    fn dropping_a_pool_that_is_not_ours_leaves_ours_armed() {
+        assert_eq!(narrow(Some("all"), "claude"), Some("codex".to_string()));
         assert_eq!(
             narrow(Some("claude+codex"), "claude"),
             Some("codex".to_string())

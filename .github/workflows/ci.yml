@@ -123,6 +123,45 @@ jobs:
             grep -q 'kebacc-codex account switcher'
           echo 'installed and uninstalled cleanly'
 
+      # `install.ps1` is what Windows users run, and nothing else here covers
+      # it: the bootstrap job below installs the published release, not this
+      # build. Both hooks are checked, and both have to be gone afterwards.
+      - name: install.ps1 puts everything where it says
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sandbox = Join-Path $env:RUNNER_TEMP ('install-' + [guid]::NewGuid().ToString('N'))
+          $tools = Join-Path $sandbox 'tools'
+          $env:CLAUDE_CONFIG_DIR = Join-Path $sandbox 'claude'
+          $env:KEBACC_SWITCH_CODEX_ACCOUNTS = Join-Path $sandbox 'codex-accounts'
+          New-Item -ItemType Directory -Path $env:CLAUDE_CONFIG_DIR -Force | Out-Null
+          $settingsPath = Join-Path $env:CLAUDE_CONFIG_DIR 'settings.json'
+          '{"model":"opus"}' | Set-Content -LiteralPath $settingsPath
+
+          pwsh -NoProfile -File plugins/kebacc-codex/install.ps1 -ToolsDir $tools -Binary target/release/kebacc-codex.exe -StatusLine -AutoSwitch -NoProfileEdit
+          if ($LASTEXITCODE -ne 0) { throw "install.ps1 exited $LASTEXITCODE" }
+
+          $settings = Get-Content -LiteralPath $settingsPath -Raw
+          # Both halves of the auto hook, and the settings that were already there.
+          foreach ($needle in 'statusLine', 'SessionStart', 'PreToolUse', '-Midtask', '"opus"') {
+            if ($settings -notmatch [regex]::Escape($needle)) { throw "settings.json is missing $needle" }
+          }
+          if (-not (Test-Path -LiteralPath (Join-Path $env:CLAUDE_CONFIG_DIR 'commands/kebacc-list-codex.md'))) {
+            throw 'The slash commands were not installed'
+          }
+
+          pwsh -NoProfile -File plugins/kebacc-codex/uninstall.ps1 -ToolsDir $tools -NoProfileEdit -Yes
+          if ($LASTEXITCODE -ne 0) { throw "uninstall.ps1 exited $LASTEXITCODE" }
+
+          $settings = Get-Content -LiteralPath $settingsPath -Raw
+          # Neither hook may outlive the binary they point at.
+          foreach ($needle in 'statusLine', 'SessionStart', 'PreToolUse') {
+            if ($settings -match [regex]::Escape($needle)) { throw "uninstall.ps1 left $needle behind" }
+          }
+          if (Test-Path -LiteralPath (Join-Path $tools 'kebacc-codex.exe')) { throw 'the binary is still there' }
+          Write-Host 'installed and uninstalled cleanly'
+
       # The published binary and the one-command install are what most people
       # will actually run, so the newest release is installed here the way they
       # would install it.
@@ -239,12 +278,6 @@ jobs:
             # A scope this version has never heard of is replaced, not widened.
             @{ Existing = 'sonnet';  Adding = 'codex';  Want = 'codex' }
           )
-          $narrow = @(
-            @{ Existing = 'all';          Removing = 'codex';  Want = 'claude' }
-            @{ Existing = 'codex';        Removing = 'codex';  Want = $null }
-            @{ Existing = 'claude';       Removing = 'codex';  Want = 'claude' }
-            @{ Existing = 'claude+codex'; Removing = 'codex';  Want = 'claude' }
-          )
           $bad = 0
           foreach ($case in $widen) {
             $got = Merge-KebaccAutoScope -Existing $case.Existing -Adding $case.Adding
@@ -253,15 +286,30 @@ jobs:
               $bad = 1
             }
           }
-          foreach ($case in $narrow) {
-            $got = Split-KebaccAutoScope -Existing $case.Existing -Removing $case.Removing
-            if ($got -ne $case.Want) {
-              Write-Host "narrow('$($case.Existing)','$($case.Removing)') = $got, wanted $($case.Want)"
-              $bad = 1
-            }
-          }
           if ($bad) { throw 'shared.ps1 and the binary disagree about the hook scope' }
-          Write-Host "$($widen.Count + $narrow.Count) scopes, all as the binary answers them"
+          Write-Host "$($widen.Count) scopes, all as the binary answers them"
+
+      # Taking this half out leaves no hook of ours behind, whatever scope it
+      # carried: the hooks read there run this binary, and this binary has one
+      # pool. A hook left saying `-Provider claude` would run it on a name it
+      # refuses, in front of the user, before every tool call.
+      - name: Removing this pool takes every hook of ours with it
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          . ./plugins/kebacc-codex/shared.ps1
+          foreach ($scope in 'codex', 'all', 'claude+codex') {
+            $hooks = '{"SessionStart":[{"hooks":[{"type":"command","command":"C:/t/kebacc-codex.exe auto -Provider SCOPE -Hook"}]}],"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"C:/t/kebacc-codex.exe auto -Provider SCOPE -Hook -Midtask"}]}]}'.Replace('SCOPE', $scope) | ConvertFrom-Json
+            Remove-KebaccAutoPool -Hooks $hooks -Pool 'codex'
+            $left = $hooks.PSObject.Properties.Name
+            if ($left.Count) { throw "scope '$scope' left $($left -join ', ') behind" }
+          }
+          # Somebody else's hooks, and the Claude half's, stay where they are.
+          $hooks = '{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"my-linter"}]},{"hooks":[{"type":"command","command":"kebacc-switch auto -Provider claude -Hook"}]}]}' | ConvertFrom-Json
+          Remove-KebaccAutoPool -Hooks $hooks -Pool 'codex'
+          if (@($hooks.PreToolUse).Count -ne 2) { throw 'it took hooks that were not ours' }
+          Write-Host 'every scope disarms, and nobody else is touched'
 
       - name: The PowerShell scripts parse
         if: runner.os == 'Windows'

@@ -23,7 +23,8 @@ $script:KebaccOwnCommands = @{
                'kebacc-doctor.md', 'kebacc-update.md',
                'kebacc-install-codex.md')
     codex  = @('kebacc-add-codex.md', 'kebacc-list-codex.md', 'kebacc-switch-codex.md',
-               'kebacc-remove-codex.md', 'kebacc-auto-codex.md', 'kebacc-doctor-codex.md')
+               'kebacc-remove-codex.md', 'kebacc-auto-codex.md', 'kebacc-doctor-codex.md',
+               'kebacc-update-codex.md')
 }
 
 # Names each plugin shipped under an earlier release and no longer does. Swept
@@ -143,23 +144,6 @@ function Merge-KebaccAutoScope {
     return $Adding
 }
 
-# Taking one pool out of the scope of a hook that covers both. Returns $null
-# when nothing is left to arm, and the caller drops the hook entirely.
-function Split-KebaccAutoScope {
-    param([string]$Existing, [Parameter(Mandatory)][string]$Removing)
-    if (-not $Existing) { return $null }
-    $pools = if ($Existing -eq 'all') { @('claude', 'codex') } else { @($Existing -split '\+') }
-    $left = @()
-    foreach ($pool in $pools) {
-        $pool = $pool.Trim().ToLower()
-        if ($pool -and $pool -ne $Removing.ToLower()) { $left += $pool }
-    }
-    if (-not $left.Count) { return $null }
-    if (($left -contains 'claude') -and ($left -contains 'codex')) { return 'all' }
-    # In the order they were read, as `narrow()` in the binary leaves them.
-    return $left -join '+'
-}
-
 # The events auto is armed on, and the flag each one's command carries.
 # SessionStart catches an account that was already out of quota. PreToolUse
 # catches one that runs out halfway through a task, which is where a long job
@@ -221,27 +205,24 @@ function Set-KebaccAutoHooks {
     }
 }
 
-# Takes this plugin's pool out of every armed event. Returns the scope that is
-# left, or $null when the hooks are gone entirely.
+# Takes this plugin's hooks out of every armed event.
+#
+# All of them, whatever scope they carry. The hooks read here run this plugin's
+# binary, and that binary carries one pool: narrowing `all` down to the other
+# half's name would leave a hook running *this* binary on a pool it refuses,
+# which is a non-zero exit in front of the user at every session start and before
+# every tool call. The other half's hooks run its own binary, under its own name,
+# and are never read or written here, so taking ours out takes nothing from it.
+# `narrow()` in crates/kebacc-codex/src/cmd/arm.rs answers the same.
 function Remove-KebaccAutoPool {
     param(
         [Parameter(Mandatory)][psobject]$Hooks,
-        [Parameter(Mandatory)][string]$Pool,
-        [Parameter(Mandatory)][string]$Entry
+        [Parameter(Mandatory)][string]$Pool
     )
-    $narrowed = $null
-    foreach ($event in $script:KebaccAutoEvents.Keys) {
-        $read = Read-KebaccArmedScope -Hooks $Hooks -Event $event
-        if (-not $read.Armed) { continue }
-        $left = Split-KebaccAutoScope -Existing $read.Armed -Removing $Pool
-        if ($left) { $narrowed = $left }
-    }
     foreach ($event in $script:KebaccAutoEvents.Keys) {
         $read = Read-KebaccArmedScope -Hooks $Hooks -Event $event
         if (-not $Hooks.PSObject.Properties[$event]) { continue }
         if ($read.Others.Count) { $Hooks | Add-Member -NotePropertyName $event -NotePropertyValue $read.Others -Force }
         else { $Hooks.PSObject.Properties.Remove($event) }
     }
-    if ($narrowed) { Set-KebaccAutoHooks -Hooks $Hooks -Entry $Entry -Scope $narrowed }
-    return $narrowed
 }

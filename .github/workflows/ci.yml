@@ -231,11 +231,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
-          # Nothing of this half is published until the first kebacc-codex-v
-          # tag goes out. Until then there is nothing to download, which this
-          # says rather than failing the build.
-          if ! gh release list --repo "$GITHUB_REPOSITORY" --limit 100 |
-                 grep -q 'kebacc-codex-v'; then
+          # The newest kebacc-codex-v tag, named outright: the repository's
+          # Latest release is the Claude half's, and a download with no tag
+          # takes that one and finds none of this half's assets on it. Nothing
+          # of this half is published until the first such tag goes out, which
+          # this says rather than failing the build.
+          tag=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName --jq '[.[] | select(.tagName | startswith("kebacc-codex-v"))] | first | .tagName // ""')
+          if [ -z "$tag" ]; then
             echo 'No release of this half is published yet, so there is nothing to install.'
             exit 0
           fi
@@ -253,8 +255,18 @@ jobs:
             Linux-aarch64) asset=kebacc-codex-aarch64-unknown-linux-gnu ;;
             *)             asset=kebacc-codex-x86_64-unknown-linux-gnu ;;
           esac
-          gh release download --repo "$GITHUB_REPOSITORY" --pattern "$asset" --dir "$sandbox" --clobber
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern "$asset" --dir "$sandbox" --clobber
           chmod +x "$sandbox/$asset"
+
+          # That release was published before the installer moved into the
+          # binary, so there is no `install` on it to run. That is a release yet
+          # to be cut rather than a broken build, and saying so beats a red
+          # build that nothing in the tree can turn green. The next release
+          # brings this gate back by itself.
+          if ! "$sandbox/$asset" --help 2>&1 | grep -q '^  install '; then
+            echo "$tag predates the built-in installer, so there is nothing to install yet"
+            exit 0
+          fi
 
           "$sandbox/$asset" install --no-profile-edit
 
@@ -265,10 +277,43 @@ jobs:
           "$HOME/.claude-tools/kebacc-codex" uninstall --yes --no-profile-edit
           echo 'the published binary installs and runs'
 
+      # install-codex.bat runs `install` on the file it downloads, so the
+      # release it would fetch has to be one that carries that command. The
+      # question is asked here, in a shell that can quote a JSON filter and read
+      # an exit code, rather than in the cmd script below. No release of this
+      # half at all is not a failure either: the bat answers 2 for that, and
+      # this leaves the step to say so.
+      - name: Does the published release know how to install itself
+        id: published
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # The runners are x64, which is the only asset this needs;
+          # install-codex.bat picks the arm64 one on a machine that has it.
+          $asset = 'kebacc-codex-x86_64-pc-windows-msvc.exe'
+          $dir = Join-Path $env:RUNNER_TEMP 'probe'
+          $tag = gh release list --repo $env:GITHUB_REPOSITORY --limit 100 --json tagName --jq '[.[] | select(.tagName | startswith("kebacc-codex-v"))] | first | .tagName // ""'
+          $knows = $false
+          if (-not $tag) {
+            Write-Host 'No release of this half is published yet, so there is nothing to install.'
+          } else {
+            gh release download $tag --repo $env:GITHUB_REPOSITORY --pattern $asset --dir $dir --clobber
+            if ($LASTEXITCODE -ne 0) { throw "$tag has no $asset on it" }
+            $help = & (Join-Path $dir $asset) --help 2>&1 | Out-String
+            $knows = $help -match '(?m)^  install '
+            if (-not $knows) {
+              Write-Host "$tag predates the built-in installer, so there is nothing to install yet"
+            }
+          }
+          "installer=$($knows.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+
       # The Windows half of the same thing, run through install-codex.bat: that
       # file is what a double-click reaches, and nothing else tests it.
       - name: install-codex.bat installs the published release
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && steps.published.outputs.installer == 'true'
         shell: cmd
         env:
           GITHUB_TOKEN: ${{ github.token }}

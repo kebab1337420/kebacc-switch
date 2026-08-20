@@ -298,17 +298,23 @@ fn installed() -> PathBuf {
     std::env::current_exe().unwrap_or(tools)
 }
 
+/// Claude Code hands a hook to a shell, and on Windows that shell is bash, where
+/// a backslash is an escape rather than a separator: `C:\Users\me\...` arrives as
+/// `C:Usersme...` and the hook fails at every session start with "command not
+/// found". Forward slashes survive that, and Windows takes them as separators
+/// too, which is why the status line has been written that way all along. The
+/// quotes are for the spaces a path may have, and cost nothing when it has none.
+///
+/// A path already written the old way is normalised here as well, so re-arming
+/// repairs a hook rather than copying its breakage forward.
 fn quoted(path: &str) -> String {
-    if path.starts_with('"') || !path.contains(' ') {
-        path.to_string()
-    } else {
-        format!("\"{path}\"")
-    }
+    let text = path.trim_matches('"').replace('\\', "/");
+    format!("\"{text}\"")
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{add, command_for, exe_of, narrow, strip, widen, EVENTS};
+    use super::{add, command_for, exe_of, narrow, quoted, strip, widen, EVENTS};
     use serde_json::json;
 
     fn armed(command: &str) -> serde_json::Value {
@@ -359,6 +365,17 @@ mod tests {
             settings["hooks"]["SessionStart"][0]["hooks"][0]["command"],
             next
         );
+    }
+
+    #[test]
+    fn a_windows_path_reaches_the_shell_with_its_separators() {
+        // Bash is what runs the hook, and it eats every backslash it is given.
+        // The path has to survive that, whether it comes off this machine or is
+        // read back out of a hook written before that was true.
+        let raw = "C:\\Users\\me\\.claude-tools\\kebacc-codex.exe";
+        let want = "\"C:/Users/me/.claude-tools/kebacc-codex.exe\"";
+        assert_eq!(quoted(raw), want);
+        assert_eq!(exe_of(&format!("{raw} auto -Provider claude -Hook")), want);
     }
 
     #[test]

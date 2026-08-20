@@ -6,6 +6,11 @@ use std::time::{SystemTime, UNIX_EPOCH};
 const DEFAULT_INTERVAL_MS: u128 = 5 * 60 * 1000;
 
 pub fn run(provider: &str) -> i32 {
+    // Word of the last detached switch, if one happened since we last ran.
+    // It goes out whatever else this call decides to do: the session has been
+    // spending a turn on an account that moved under it, and that is worth
+    // saying even on a call that is about to keep quiet.
+    announce(super::auto::take_note());
     if about_us(&hook_payload()) {
         return 0;
     }
@@ -21,6 +26,17 @@ pub fn run(provider: &str) -> i32 {
         spawn(provider);
     }
     0
+}
+
+/// Claude Code reads a hook's stdout as JSON and shows `systemMessage` to the
+/// user. Nothing else here can reach the session: the switch itself runs
+/// detached, and its own stdout goes nowhere.
+fn announce(note: Option<String>) {
+    let Some(note) = note else {
+        return;
+    };
+    let payload = serde_json::json!({ "systemMessage": note });
+    println!("{payload}");
 }
 
 /// The `PreToolUse` payload, when Claude Code is the one calling.

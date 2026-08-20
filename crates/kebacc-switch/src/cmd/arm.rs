@@ -270,12 +270,18 @@ fn installed() -> PathBuf {
     std::env::current_exe().unwrap_or(tools)
 }
 
+/// Claude Code hands a hook to a shell, and on Windows that shell is bash, where
+/// a backslash is an escape rather than a separator: `C:\Users\me\...` arrives
+/// as `C:Usersme...` and the hook fails at every session start with "command not
+/// found". Forward slashes survive that, and Windows takes them as separators
+/// too, which is why the status line has been written that way all along. The
+/// quotes are for the spaces a path may have, and cost nothing when it has none.
+///
+/// A path already written the old way is normalised here as well, so re-arming
+/// repairs a hook rather than copying its breakage forward.
 fn quoted(path: &str) -> String {
-    if path.starts_with('"') || !path.contains(' ') {
-        path.to_string()
-    } else {
-        format!("\"{path}\"")
-    }
+    let text = path.trim_matches('"').replace('\\', "/");
+    format!("\"{text}\"")
 }
 
 #[cfg(test)]
@@ -367,7 +373,7 @@ mod tests {
         let command = line("kebacc-switch", "claude", true);
         assert_eq!(
             command,
-            "kebacc-switch auto -Provider claude -Hook -Midtask"
+            "\"kebacc-switch\" auto -Provider claude -Hook -Midtask"
         );
         let mut settings = json!({});
         add(&mut settings, PRE_TOOL_USE, Some("*"), &command, 10);
@@ -375,6 +381,24 @@ mod tests {
         assert_eq!(
             settings["hooks"]["PreToolUse"][0]["hooks"][0]["command"],
             command
+        );
+    }
+
+    #[test]
+    fn a_windows_path_reaches_the_shell_with_its_separators() {
+        // Bash is what runs the hook, and it eats every backslash it is given.
+        // The line has to name a path that survives that, whether it is built
+        // from this machine's own path or read back off a hook written before
+        // this was true.
+        let raw = "C:\\Users\\me\\.claude-tools\\kebacc-switch.exe";
+        assert_eq!(
+            line(raw, "claude", false),
+            "\"C:/Users/me/.claude-tools/kebacc-switch.exe\" auto -Provider claude -Hook"
+        );
+        let old = format!("{raw} auto -Provider claude -Hook");
+        assert_eq!(
+            line(&exe_of(&old), "claude", false),
+            "\"C:/Users/me/.claude-tools/kebacc-switch.exe\" auto -Provider claude -Hook"
         );
     }
 

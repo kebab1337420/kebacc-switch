@@ -6,8 +6,13 @@ use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 use std::path::Path;
 
-pub const FIVE_HOUR_CAP: f64 = 99.0;
-pub const SEVEN_DAY_CAP: f64 = 99.0;
+/// Where an account counts as spent. Not 100, and not 99 either: the switch has
+/// to land while there is still quota left to spend, since the check runs a
+/// moment before the requests it protects. Two points is the margin that buys —
+/// enough for the turn in flight, small enough that almost nothing is left
+/// unused on the account being left behind.
+pub const FIVE_HOUR_CAP: f64 = 98.0;
+pub const SEVEN_DAY_CAP: f64 = 98.0;
 const CACHE_SECONDS: i64 = 60;
 
 pub fn caps() -> [(&'static str, f64); 2] {
@@ -674,9 +679,9 @@ mod tests {
 
     #[test]
     fn the_cap_is_a_plain_threshold() {
-        assert!(super::at_cap(99.0, super::FIVE_HOUR_CAP));
-        assert!(super::at_cap(99.4, super::FIVE_HOUR_CAP));
-        assert!(!super::at_cap(98.9, super::FIVE_HOUR_CAP));
+        assert!(super::at_cap(98.0, super::FIVE_HOUR_CAP));
+        assert!(super::at_cap(98.4, super::FIVE_HOUR_CAP));
+        assert!(!super::at_cap(97.9, super::FIVE_HOUR_CAP));
     }
 
     #[test]

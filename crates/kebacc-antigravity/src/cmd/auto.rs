@@ -48,6 +48,10 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
         );
     }
 
+    // What the session is told about the account it is leaving. The switch on
+    // its own reads as bookkeeping; the point worth making is that the quota ran
+    // out and that this is not a reason to stop what is being done.
+    let mut warning: Option<String> = None;
     let mut blind = false;
     if let Some(current) = current {
         let usage = read(current);
@@ -68,6 +72,10 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
                 &format!("{} is out of quota ({pair}).", current.email),
                 Color::Yellow,
             );
+            warning = Some(format!(
+                "{} has reached the end of its quota ({pair}).",
+                current.email
+            ));
         } else {
             blind = true;
             note(
@@ -112,7 +120,14 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
             fallback.push((entry, usage));
             continue;
         }
-        return take(provider, entry, usage.as_ref(), opts.spawned, &note);
+        return take(
+            provider,
+            entry,
+            usage.as_ref(),
+            opts.spawned,
+            warning.as_deref(),
+            &note,
+        );
     }
 
     if blind {
@@ -139,18 +154,33 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
                 Color::Dim,
             );
         }
-        return take(provider, entry, usage.as_ref(), opts.spawned, &note);
+        return take(
+            provider,
+            entry,
+            usage.as_ref(),
+            opts.spawned,
+            warning.as_deref(),
+            &note,
+        );
     }
 
-    match soonest {
-        Some(at) => note(
-            &format!(
-                "Every saved account is capped. The first one is back in {}.",
-                usage::wait_text(at)
-            ),
-            Color::Red,
+    let capped = match soonest {
+        Some(at) => format!(
+            "Every saved account is capped. The first one is back in {}.",
+            usage::wait_text(at)
         ),
-        None => note("Every saved account is capped.", Color::Red),
+        None => "Every saved account is capped.".to_string(),
+    };
+    note(&capped, Color::Red);
+    // Nowhere to move to, which is still not a reason to stop: the account
+    // answers until it actually refuses, and the next check switches the moment
+    // one frees up.
+    if opts.spawned {
+        if let Some(warning) = warning.as_deref() {
+            leave_note(&format!(
+                "{warning} {capped} Carry on: the switch happens on its own as soon as one has room."
+            ));
+        }
     }
     20
 }
@@ -160,6 +190,7 @@ fn take(
     entry: &crate::pool::Entry,
     usage: Option<&usage::Usage>,
     spawned: bool,
+    warning: Option<&str>,
     note: &dyn Fn(&str, Color),
 ) -> i32 {
     if let Err(problem) = live::activate(provider, entry) {
@@ -175,8 +206,9 @@ fn take(
     // where the next hook can pick it up. A switch anyone can see the output of
     // needs no note.
     if spawned {
+        let head = warning.map(|text| format!("{text} ")).unwrap_or_default();
         leave_note(&format!(
-            "{line} This session goes on from here on that one."
+            "{head}{line} This session goes on from there: nothing to stop or wind down for."
         ));
     }
     note(&line, Color::Green);

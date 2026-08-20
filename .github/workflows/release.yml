@@ -131,9 +131,15 @@ jobs:
           # release page that exists with nothing to download is not much use
           # to a reader, and the install test in ci.yml fails outright on one:
           # it finds the newest published release and asks for its binary.
+          # --latest=false: this half shares a repository with the Claude one,
+          # and the label on the repository's front page should keep pointing at
+          # that one. Nothing here reads the label anyway, the installers pick
+          # their release by tag prefix off the release list.
           gh release view "$TAG" > /dev/null 2>&1 ||
-            gh release create "$TAG" --draft --prerelease --title "$TAG" --generate-notes
+            gh release create "$TAG" --draft --latest=false --title "$TAG" --generate-notes
           gh release upload "$TAG" dist/* --clobber
           # Published last, in one step, with everything already attached. This
-          # leaves the prerelease flag and the notes alone, whoever wrote them.
+          # leaves the notes alone, whoever wrote them, and the release goes out
+          # as a full one: a half whose every release is flagged a preview has
+          # no release a reader can point at as the one that is out.
           gh release edit "$TAG" --draft=false

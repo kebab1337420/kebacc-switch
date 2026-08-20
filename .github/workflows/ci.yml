@@ -283,6 +283,40 @@ jobs:
           if (Test-Path -LiteralPath $exe) { throw 'The uninstaller left the binary behind' }
           Write-Host 'the published binary installs and runs'
 
+      # install-antigravity.bat is what a double-click reaches, and nothing else
+      # runs it. It fetches bootstrap.ps1 from the newest release of this half
+      # and hands it whatever arguments it was given, so this covers the path a
+      # person actually takes rather than the one CI would take on its own.
+      #
+      # No release of this half is published yet. The installer answers 2 for
+      # that rather than 1, which is why the step reads the code instead of
+      # only asking whether it failed.
+      - name: install-antigravity.bat installs the published release
+        if: runner.os == 'Windows'
+        shell: cmd
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+          # Nobody is here to press a key at the end of it.
+          KEBACC_NO_PAUSE: "1"
+        run: |
+          set "CLAUDE_CONFIG_DIR=%RUNNER_TEMP%\bat-claude"
+          set "KEBACC_SWITCH_ANTIGRAVITY_ACCOUNTS=%RUNNER_TEMP%\bat-accounts"
+          set "TOOLS=%RUNNER_TEMP%\bat-tools"
+          mkdir "%CLAUDE_CONFIG_DIR%"
+          call install-antigravity.bat -ToolsDir "%TOOLS%" -NoProfileEdit
+          if errorlevel 2 (
+            echo No release of this half is published yet, so there is nothing to install.
+            exit /b 0
+          )
+          if errorlevel 1 exit /b 1
+          "%TOOLS%\kebacc-antigravity.exe" --version || exit /b 1
+          "%TOOLS%\kebacc-antigravity.exe" doctor >nul || exit /b 1
+          if not exist "%TOOLS%\.antigravity-version" exit /b 1
+          if not exist "%CLAUDE_CONFIG_DIR%\commands\kebacc-list-antigravity.md" exit /b 1
+          pwsh -NoProfile -File plugins\kebacc-antigravity\uninstall.ps1 -ToolsDir "%TOOLS%" -NoProfileEdit -Yes || exit /b 1
+          if exist "%TOOLS%\kebacc-antigravity.exe" exit /b 1
+          echo the published binary installs and runs
+
       # The scope algebra exists twice: in the binary, which the slash commands
       # call, and in shared.ps1, which the installers call. The two have to
       # answer the same for every input, or installing the plugin and arming it

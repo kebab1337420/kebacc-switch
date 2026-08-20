@@ -24,6 +24,10 @@ rem
 rem Arguments are passed through to the installer by name, so this works:
 rem
 rem   install-antigravity.bat -AutoSwitch
+rem
+rem It answers 2, not 1, when no release of this half is published yet: that is
+rem nothing to install rather than a failure to install, and CI reads the two
+rem differently.
 
 setlocal
 
@@ -35,7 +39,8 @@ set "PS=powershell"
 where pwsh >nul 2>&1 && set "PS=pwsh"
 
 echo Fetching the installer...
-"%PS%" -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; try{[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12}catch{}; $h=@{'User-Agent'='kebacc-antigravity-installer'}; $answer=Invoke-RestMethod ('https://api.github.com/repos/'+$env:REPO+'/releases') -Headers $h; $r=@($answer | ForEach-Object {$_} | Where-Object {-not $_.draft -and $_.tag_name -like 'kebacc-antigravity-v*'}) | Select-Object -First 1; if(-not $r){throw 'No kebacc-antigravity-v* release has been published yet.'}; $a=@($r.assets | ForEach-Object {$_} | Where-Object {$_.name -eq 'bootstrap.ps1'}) | Select-Object -First 1; if(-not $a){throw ($r.tag_name+' has no bootstrap.ps1 attached to it.')}; Invoke-WebRequest $a.url -OutFile $env:SCRIPT -Headers @{'User-Agent'='kebacc-antigravity-installer';'Accept'='application/octet-stream'}"
+"%PS%" -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; try{[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12}catch{}; $h=@{'User-Agent'='kebacc-antigravity-installer'}; $answer=Invoke-RestMethod ('https://api.github.com/repos/'+$env:REPO+'/releases') -Headers $h; $r=@($answer | ForEach-Object {$_} | Where-Object {-not $_.draft -and $_.tag_name -like 'kebacc-antigravity-v*'}) | Select-Object -First 1; if(-not $r){Write-Host 'No kebacc-antigravity-v* release has been published yet.'; exit 2}; $a=@($r.assets | ForEach-Object {$_} | Where-Object {$_.name -eq 'bootstrap.ps1'}) | Select-Object -First 1; if(-not $a){Write-Host ($r.tag_name+' has no bootstrap.ps1 attached to it.'); exit 2}; Invoke-WebRequest $a.url -OutFile $env:SCRIPT -Headers @{'User-Agent'='kebacc-antigravity-installer';'Accept'='application/octet-stream'}"
+if errorlevel 2 goto unpublished
 if errorlevel 1 goto failed
 
 echo Saved to %SCRIPT%
@@ -45,11 +50,23 @@ if errorlevel 1 goto failed
 del "%SCRIPT%" >nul 2>&1
 echo.
 echo Done. Restart Claude Code, then run /kebacc-add-antigravity to save the login you are on.
-pause
+call :wait
 exit /b 0
+
+:unpublished
+echo.
+echo Nothing to install yet: this half has no published release.
+call :wait
+exit /b 2
 
 :failed
 echo.
 echo Install failed. The script it was running is at %SCRIPT% if you want to read it.
-pause
+call :wait
 exit /b 1
+
+rem Held open so a double-click leaves its output readable. Set KEBACC_NO_PAUSE
+rem when nobody is there to press a key.
+:wait
+if not defined KEBACC_NO_PAUSE pause
+goto :eof

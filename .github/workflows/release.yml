@@ -133,8 +133,11 @@ jobs:
           # to a reader, and the install test in ci.yml fails outright on one:
           # it finds the newest published release and asks for its binary.
           gh release view "$TAG" > /dev/null 2>&1 ||
-            gh release create "$TAG" --draft --prerelease --title "$TAG" --generate-notes
+            gh release create "$TAG" --draft --title "$TAG" --generate-notes
           gh release upload "$TAG" dist/* --clobber
           # Published last, in one step, with everything already attached. This
-          # leaves the prerelease flag and the notes alone, whoever wrote them.
+          # leaves the notes alone, whoever wrote them, and the release goes out
+          # as a full one: install.bat and the README line both reach for the
+          # newest release that is not a pre-release, so a release flagged as
+          # one is a release nobody can install without knowing its tag.
           gh release edit "$TAG" --draft=false

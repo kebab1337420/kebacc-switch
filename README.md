@@ -50,6 +50,11 @@ One file, downloaded and asked to install itself. Pick the name for the machine
 you are on — `aarch64-apple-darwin`, `x86_64-apple-darwin`,
 `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`:
 
+Releases of the Codex half go out of this repository as well, so the `latest`
+endpoint below is the newest `kebacc-switch-v*` release only because that half
+is the one that keeps the label. Ask for a tag by name to be sure of what you
+get.
+
 ```sh
 name=kebacc-switch-aarch64-apple-darwin
 url=$(curl -fsSL https://api.github.com/repos/kebab1337420/kebacc-switch/releases/latest |
@@ -182,10 +187,14 @@ Codex lives in its own plugin, `kebacc-codex`, on the `Codex` branch of this
 repository. It has its own binary, its own pool and its own slash commands
 (`/kebacc-add-codex`, `/kebacc-list-codex`, `/kebacc-switch-codex`,
 `/kebacc-remove-codex`, `/kebacc-auto-codex`), and the two install side by
-side. There is no published release for it, so `/kebacc-install-codex` clones
-the branch, builds it with cargo and runs its installer; the same thing by hand
-is `kebacc-switch install-codex`, which clones that branch, builds it and
-runs whatever installer it carries.
+side. It is published from this repository too, under `kebacc-codex-v*` tags,
+with an `install-codex.bat` of its own attached to the release. Both halves are
+picked by tag prefix rather than by the "Latest" label, which only one of them
+can carry.
+
+`/kebacc-install-codex` clones the branch, builds it with cargo and runs its
+installer, which is still the way to install a Codex half newer than its last
+release; the same thing by hand is `kebacc-switch install-codex`.
 
 **Exit codes**
 

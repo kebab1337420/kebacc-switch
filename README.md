@@ -50,15 +50,14 @@ One file, downloaded and asked to install itself. Pick the name for the machine
 you are on — `aarch64-apple-darwin`, `x86_64-apple-darwin`,
 `x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`:
 
-Releases of the Codex half go out of this repository as well, so the `latest`
-endpoint below is the newest `kebacc-switch-v*` release only because that half
-is the one that keeps the label. Ask for a tag by name to be sure of what you
-get.
+The Codex half is published from this repository too, so the list of releases
+is read rather than the `latest` endpoint: the file is picked by its own name,
+whichever half was released last.
 
 ```sh
 name=kebacc-switch-aarch64-apple-darwin
-url=$(curl -fsSL https://api.github.com/repos/kebab1337420/kebacc-switch/releases/latest |
-  grep -o "https://[^\"]*/$name")
+url=$(curl -fsSL https://api.github.com/repos/kebab1337420/kebacc-switch/releases |
+  grep -o "https://[^\"]*/$name" | head -n 1)
 curl -fsSL "$url" -o /tmp/kebacc-switch && chmod +x /tmp/kebacc-switch
 /tmp/kebacc-switch install --status-line --auto-switch claude
 ```

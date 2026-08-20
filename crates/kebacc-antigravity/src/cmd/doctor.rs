@@ -306,7 +306,7 @@ fn check_settings(report: &mut Report) {
         }
     } else {
         say(
-            "  status line not installed. Add it with: install.ps1 -StatusLine",
+            "  status line not installed. Add it with: kebacc-antigravity install -StatusLine",
             Color::Dim,
         );
     }
@@ -314,7 +314,7 @@ fn check_settings(report: &mut Report) {
     let hooks = auto_hooks(&settings);
     match hooks.len() {
         0 => say(
-            "  auto does not run on its own. Arm it with: install.ps1 -AutoSwitch",
+            "  auto does not run on its own. Arm it with: kebacc-antigravity install -AutoSwitch",
             Color::Dim,
         ),
         1 => report.good(&format!(

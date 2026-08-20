@@ -427,8 +427,8 @@ mod tests {
         assert_eq!(widen(Some(""), "claude"), "claude");
     }
 
-    // shared.ps1 carries the same algebra for the installers to use, and CI
-    // runs this table against it. A scope nothing here knows — `off`, or one a
+    // This table is the whole of the scope algebra: the installer calls this
+    // code rather than carrying a copy of it. A scope nothing here knows — `off`, or one a
     // later version writes — is replaced by the pool being armed rather than
     // joined to it, since joining would arm a hook on a pool that has no
     // meaning.

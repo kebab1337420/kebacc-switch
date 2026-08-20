@@ -2,9 +2,9 @@
 ⚠️⚠️⚠️⚠️⚠️⚠️⚠️(MADE FOR BOITE : https://github.com/beboite/boite)⚠️⚠️⚠️⚠️⚠️⚠️⚠️
 
 
-# kebacc-codex
+# kebacc-antigravity
 
-**Several Codex logins on one machine, and one command to move between them
+**Several Antigravity logins on one machine, and one command to move between them
 when the one you are on runs out of quota.**
 
 [![release](https://img.shields.io/github/v/release/kebab1337420/kebacc-switch?sort=semver&label=release)](https://github.com/kebab1337420/kebacc-switch/releases)
@@ -17,18 +17,35 @@ when the one you are on runs out of quota.**
 
 ## What it is
 
-A small Rust binary and a Claude Code plugin. It saves the Codex login you are
+A small Rust binary and a Claude Code plugin. It saves the Antigravity login you are
 on, keeps the saved ones sealed on disk, reads each account's quota from the
 API, and moves you to one that still has room — on its own, at session start
 and again while a task runs, before you notice you were capped.
 
 Claude Code is the host: the slash commands, the session hooks and the status
-line are its. The pool is Codex's, in `~/.codex/auth.json`. Nothing here reads
-or writes a Claude login.
+line are its. The pool is Antigravity's. Nothing here reads or writes a Claude
+login.
+
+Antigravity keeps one login in two places, and this writes both, because a
+switch that moved only one would leave the other half signed in as somebody
+else:
+
+- the CLI (`agy`) reads `~/.gemini/antigravity-cli/antigravity-oauth-token`
+- the IDE reads the operating system's credential store, under service
+  `gemini` and user `antigravity` — Credential Manager on Windows, the
+  Keychain on macOS, libsecret elsewhere
+
+The credential store is best effort: a machine with no entry, or a locked
+keyring, still gets the file written and the switch still counts.
+`KEBACC_SWITCH_NO_KEYRING=1` leaves the store alone entirely.
+
+> The IDE reads its login when it starts. Switch while it is running and it
+> keeps using the account it opened on until it is restarted. The newer
+> in-IDE state (`state.vscdb`) is deliberately not touched.
 
 ```
-crates/kebacc-codex/    the binary
-plugins/kebacc-codex/    the installers, the hooks, the slash commands
+crates/kebacc-antigravity/    the binary
+plugins/kebacc-antigravity/    the installers, the hooks, the slash commands
 ```
 
 The Claude pool is a separate switcher, `kebacc-switch`, on the `master` branch
@@ -42,11 +59,11 @@ tags, and each one reads and rewrites only the hooks that run its own binary.
 
 ### Windows, no toolchain
 
-Download **`install-codex.bat`** from the
+Download **`install-antigravity.bat`** from the
 [latest release](https://github.com/kebab1337420/kebacc-switch/releases) and run
 it. It fetches the published binary and the plugin, installs both, and needs no
 clone, no Rust and no administrator. Arguments go through to the installer, so
-`install-codex.bat -StatusLine -AutoSwitch` works.
+`install-antigravity.bat -StatusLine -AutoSwitch` works.
 
 `bootstrap.ps1`, published beside it on the same release, is what it runs — a
 plain script you can read first if you would rather see what it does. It comes
@@ -58,7 +75,7 @@ to it therefore needs a fresh upload to reach anyone.
 ### macOS and Linux, no toolchain
 
 ```sh
-curl -fsSL https://github.com/kebab1337420/kebacc-switch/releases/download/kebacc-codex-v0.2.6/bootstrap.sh | sh
+curl -fsSL https://github.com/kebab1337420/kebacc-switch/releases/download/kebacc-antigravity-v0.2.6/bootstrap.sh | sh
 ```
 
 It picks the binary for the machine it is on — Apple silicon, Intel Macs,
@@ -70,11 +87,11 @@ and runs `install.sh`. Options go through after `sh -s --`, so
 
 ```sh
 cargo build --release
-pwsh -NoProfile -File plugins/kebacc-codex/install.ps1   # Windows
-sh plugins/kebacc-codex/install.sh                       # macOS, Linux
+pwsh -NoProfile -File plugins/kebacc-antigravity/install.ps1   # Windows
+sh plugins/kebacc-antigravity/install.sh                       # macOS, Linux
 ```
 
-The installer copies `target/release/kebacc-codex` into `~/.claude-tools`, then
+The installer copies `target/release/kebacc-antigravity` into `~/.claude-tools`, then
 writes the hooks, the status line and the slash commands into your Claude Code
 settings. It backs the settings file up first and refuses to write a result that
 would not parse. `uninstall.ps1`, or `uninstall.sh`, takes all of it back out.
@@ -94,19 +111,27 @@ Everything the plugin installs lives under the `/kebacc-` prefix.
 
 | Command | What it does |
 | --- | --- |
-| `/kebacc-add-codex` | save the Codex login in `~/.codex/auth.json` |
-| `/kebacc-list-codex` | what is saved, and what is known of each quota |
-| `/kebacc-switch-codex` | put another saved login in front of the CLI |
-| `/kebacc-remove-codex` | forget a saved login; the live session is untouched |
-| `/kebacc-auto-codex` | arm or disarm the automatic switch |
-| `/kebacc-doctor-codex` | check the install, the pool and the session hook |
-| `/kebacc-update-codex` | install the newest release of this half |
+| `/kebacc-add-antigravity` | save the Antigravity login in `~/.gemini/antigravity-cli/antigravity-oauth-token` |
+| `/kebacc-list-antigravity` | what is saved, and what is known of each quota |
+| `/kebacc-switch-antigravity` | put another saved login in front of the CLI |
+| `/kebacc-remove-antigravity` | forget a saved login; the live session is untouched |
+| `/kebacc-auto-antigravity` | arm or disarm the automatic switch |
+| `/kebacc-doctor-antigravity` | check the install, the pool and the session hook |
+| `/kebacc-update-antigravity` | install the newest release of this half |
 
-A list always asks the API rather than reading the cache, and prints both quota
-windows with the time left until each one resets.
+A list always asks the API rather than reading the cache, and prints both
+readings with the time left until each one resets.
+
+Antigravity does not meter an account in fixed windows the way Codex does.
+It gives each model family an allowance of its own, with its own reset, and
+they empty at very different rates. So the two readings shown are **max**,
+the family that is furthest gone — which is what stops work first and what
+the auto-switch acts on — and **min**, the family with the most left, which
+is what work falls back to. Quota comes from Google's Cloud Code endpoint,
+the same one the IDE asks.
 
 Arming changes nothing about the account in use: it decides what the *next*
-sessions open on. Only `/kebacc-switch-codex` moves the login you are on right
+sessions open on. Only `/kebacc-switch-antigravity` moves the login you are on right
 now.
 
 ---
@@ -116,31 +141,31 @@ now.
 The slash commands are thin wrappers; the binary takes the same work directly.
 
 ```sh
-kebacc-codex add                        # save the current login
-kebacc-codex list -Refresh -Countdown
-kebacc-codex switch -Email you@example.com
-kebacc-codex auto                       # switch only if capped
-kebacc-codex arm -Provider codex        # arm the session-start switch, change nothing now
-kebacc-codex arm -Provider off          # disarm it
-kebacc-codex doctor
-kebacc-codex refresh                    # re-read the quotas, print nothing
-kebacc-codex update
+kebacc-antigravity add                        # save the current login
+kebacc-antigravity list -Refresh -Countdown
+kebacc-antigravity switch -Email you@example.com
+kebacc-antigravity auto                       # switch only if capped
+kebacc-antigravity arm -Provider antigravity        # arm the session-start switch, change nothing now
+kebacc-antigravity arm -Provider off          # disarm it
+kebacc-antigravity doctor
+kebacc-antigravity refresh                    # re-read the quotas, print nothing
+kebacc-antigravity update
 ```
 
 `-Provider` survives because the slash commands and the hooks pass it. This
-build carries one pool, so `codex` is what it takes and what it defaults to;
+build carries one pool, so `antigravity` is what it takes and what it defaults to;
 `claude` is refused with a line saying where that pool lives.
 
 **Arming**
 
 `arm` is the only command that writes to the Claude Code settings, and it only
-ever touches hooks that run `kebacc-codex`. A Claude switcher installed beside
+ever touches hooks that run `kebacc-antigravity`. A Claude switcher installed beside
 this one arms its own pair, under its own binary, and neither uninstaller can
 disarm the other:
 
 ```sh
-kebacc-codex arm -Provider codex -Merge   # add this pool to what our hook carries
-kebacc-codex arm -Provider codex -Drop    # take it back out, disarm when nothing is left
+kebacc-antigravity arm -Provider antigravity -Merge   # add this pool to what our hook carries
+kebacc-antigravity arm -Provider antigravity -Drop    # take it back out, disarm when nothing is left
 ```
 
 `all` is still understood as a scope: a hook left by the version where one
@@ -165,14 +190,16 @@ pool rather than as something it no longer has.
 
 | Path | What |
 | --- | --- |
-| `~/.claude-tools/` | the installed binary, and `.codex-version` — this half's marker |
-| `~/.claude/commands/kebacc-*-codex.md` | the slash commands |
+| `~/.claude-tools/` | the installed binary, and `.antigravity-version` — this half's marker |
+| `~/.claude/commands/kebacc-*-antigravity.md` | the slash commands |
 | `~/.kebacc-switch/` | locks, stamps, update state |
-| `~/.kebacc-switch-codex-accounts/` | the saved logins |
-| `~/.codex/auth.json` | the login the Codex CLI is using right now |
+| `~/.kebacc-switch-antigravity-accounts/` | the saved logins |
+| `~/.gemini/antigravity-cli/antigravity-oauth-token` | the login the Antigravity CLI is using right now |
+| `gemini:antigravity` in the OS credential store | the same login, as the IDE reads it |
 
-`KEBACC_SWITCH_CODEX_ACCOUNTS` moves the pool, `CODEX_HOME` is where the CLI's
-own file is looked for.
+`KEBACC_SWITCH_ANTIGRAVITY_ACCOUNTS` moves the pool, `ANTIGRAVITY_HOME` is
+where the CLI's own file is looked for, and `KEBACC_SWITCH_NO_KEYRING=1`
+keeps the credential store out of it.
 
 Saved credentials are sealed before they touch disk: DPAPI on Windows, and
 AES-256-GCM under a key held by the macOS Keychain or by libsecret elsewhere.
@@ -180,14 +207,14 @@ Each snapshot carries an HMAC-SHA256 stamp, so a pool file edited outside the
 tool is reported as changed rather than trusted.
 
 The full account of what is stored and what the hooks do is in
-[`plugins/kebacc-codex/README.md`](plugins/kebacc-codex/README.md).
+[`plugins/kebacc-antigravity/README.md`](plugins/kebacc-antigravity/README.md).
 
 ---
 
 ## Self-update
 
 At session start, at most once a day, the switcher asks this repository's
-releases whether a newer `kebacc-codex-v*` tag exists and installs it in the
+releases whether a newer `kebacc-antigravity-v*` tag exists and installs it in the
 background. `KEBACC_SWITCH_UPDATE=off` stops that, and so does installing with
 `-NoAutoUpdate`.
 
@@ -218,7 +245,7 @@ $flags = @(
     "--remap-path-prefix=$PWD=/src"
 )
 $env:CARGO_ENCODED_RUSTFLAGS = ($flags -join "`u{001f}")
-cargo build --release -p kebacc-codex
+cargo build --release -p kebacc-antigravity
 ```
 
 `CARGO_ENCODED_RUSTFLAGS` rather than `RUSTFLAGS` because the separator is a

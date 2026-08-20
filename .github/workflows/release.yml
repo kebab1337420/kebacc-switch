@@ -6,7 +6,7 @@ name: release
 # finds its own file.
 on:
   push:
-    tags: ["kebacc-codex-v*"]
+    tags: ["kebacc-antigravity-v*"]
   workflow_dispatch:
     inputs:
       tag:
@@ -76,7 +76,7 @@ jobs:
 
       - name: Test
         if: '!matrix.cross'
-        run: cargo test --release --target ${{ matrix.target }} -p kebacc-codex
+        run: cargo test --release --target ${{ matrix.target }} -p kebacc-antigravity
 
       # The paths of the machine that built it have no business being in a
       # published binary.
@@ -84,21 +84,21 @@ jobs:
         shell: bash
         run: |
           export CARGO_ENCODED_RUSTFLAGS="--remap-path-prefix=$PWD=."
-          cargo build --release --target ${{ matrix.target }} -p kebacc-codex
+          cargo build --release --target ${{ matrix.target }} -p kebacc-antigravity
 
       - name: Name it after its platform
         shell: bash
         run: |
           mkdir -p dist
           if [ "${{ runner.os }}" = "Windows" ]; then
-            cp "target/${{ matrix.target }}/release/kebacc-codex.exe" "dist/kebacc-codex-${{ matrix.target }}.exe"
+            cp "target/${{ matrix.target }}/release/kebacc-antigravity.exe" "dist/kebacc-antigravity-${{ matrix.target }}.exe"
           else
-            cp "target/${{ matrix.target }}/release/kebacc-codex" "dist/kebacc-codex-${{ matrix.target }}"
+            cp "target/${{ matrix.target }}/release/kebacc-antigravity" "dist/kebacc-antigravity-${{ matrix.target }}"
           fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: kebacc-codex-${{ matrix.target }}
+          name: kebacc-antigravity-${{ matrix.target }}
           path: dist/*
           if-no-files-found: error
 
@@ -124,8 +124,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          cp plugins/kebacc-codex/bootstrap.ps1 plugins/kebacc-codex/bootstrap.sh \
-             install-codex.bat dist/
+          cp plugins/kebacc-antigravity/bootstrap.ps1 plugins/kebacc-antigravity/bootstrap.sh \
+             install-antigravity.bat dist/
           ls -l dist
           # The release is held as a draft until its binaries are on it. A
           # release page that exists with nothing to download is not much use

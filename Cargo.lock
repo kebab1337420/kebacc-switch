@@ -602,7 +602,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kebacc-codex"
+name = "kebacc-antigravity"
 version = "0.2.8"
 dependencies = [
  "aes-gcm",

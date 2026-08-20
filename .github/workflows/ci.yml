@@ -29,18 +29,18 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Build
-        run: cargo build --release -p kebacc-codex
+        run: cargo build --release -p kebacc-antigravity
 
       - name: Test
-        run: cargo test --release -p kebacc-codex
+        run: cargo test --release -p kebacc-antigravity
 
       - name: Clippy
-        run: cargo clippy --release --all-targets -p kebacc-codex -- -D warnings
+        run: cargo clippy --release --all-targets -p kebacc-antigravity -- -D warnings
 
       # A binary that will not start says so here rather than on a user's
       # machine after the release is out.
       - name: It runs
-        run: cargo run --release -p kebacc-codex -- --version
+        run: cargo run --release -p kebacc-antigravity -- --version
 
       - name: The shell scripts parse
         if: runner.os != 'Windows'
@@ -58,10 +58,10 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           set -eu
-          crate=$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' crates/kebacc-codex/Cargo.toml | head -n 1)
-          marked=$(tr -d ' \t\r\n' < plugins/kebacc-codex/VERSION)
+          crate=$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' crates/kebacc-antigravity/Cargo.toml | head -n 1)
+          marked=$(tr -d ' \t\r\n' < plugins/kebacc-antigravity/VERSION)
           test "$marked" = "$crate" || {
-            echo "plugins/kebacc-codex/VERSION is $marked, the crate is $crate" >&2
+            echo "plugins/kebacc-antigravity/VERSION is $marked, the crate is $crate" >&2
             exit 1
           }
           echo "every VERSION says $crate"
@@ -74,11 +74,11 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           set -eu
-          . plugins/kebacc-codex/shared.sh
-          listed=$(kebacc_own_commands codex | sort)
-          shipped=$(cd plugins/kebacc-codex/src/commands && ls -- *.md | sort)
+          . plugins/kebacc-antigravity/shared.sh
+          listed=$(kebacc_own_commands antigravity | sort)
+          shipped=$(cd plugins/kebacc-antigravity/src/commands && ls -- *.md | sort)
           if [ "$listed" != "$shipped" ]; then
-            echo 'plugins/kebacc-codex/src/commands and kebacc_own_commands codex disagree:' >&2
+            echo 'plugins/kebacc-antigravity/src/commands and kebacc_own_commands antigravity disagree:' >&2
             printf '%s\n' "$listed" > /tmp/kebacc-listed
             printf '%s\n' "$shipped" > /tmp/kebacc-shipped
             diff /tmp/kebacc-listed /tmp/kebacc-shipped >&2 || true
@@ -95,7 +95,7 @@ jobs:
           sandbox=$(mktemp -d)
           export HOME="$sandbox/home"
           export CLAUDE_CONFIG_DIR="$sandbox/claude"
-          export KEBACC_SWITCH_CODEX_ACCOUNTS="$sandbox/codex-accounts"
+          export KEBACC_SWITCH_ANTIGRAVITY_ACCOUNTS="$sandbox/antigravity-accounts"
           mkdir -p "$HOME" "$CLAUDE_CONFIG_DIR"
           echo '{"model":"opus"}' > "$CLAUDE_CONFIG_DIR/settings.json"
           # The Claude half, as far as this half can tell it is there: its
@@ -103,11 +103,11 @@ jobs:
           mkdir -p "$HOME/.claude-tools"
           printf '0.0.0' > "$HOME/.claude-tools/.version"
 
-          sh plugins/kebacc-codex/install.sh --binary target/release/kebacc-codex --status-line --auto-switch
+          sh plugins/kebacc-antigravity/install.sh --binary target/release/kebacc-antigravity --status-line --auto-switch
 
-          test -x "$HOME/.claude-tools/kebacc-codex"
-          test "$(cat "$HOME/.claude-tools/.codex-version")" = "$(cat plugins/kebacc-codex/VERSION)"
-          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-codex.md"
+          test -x "$HOME/.claude-tools/kebacc-antigravity"
+          test "$(cat "$HOME/.claude-tools/.antigravity-version")" = "$(cat plugins/kebacc-antigravity/VERSION)"
+          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-antigravity.md"
           # Both halves are there, so the pair that spans them is too.
           test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-all.md"
           test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-auto-all.md"
@@ -117,20 +117,20 @@ jobs:
           # One pair of hooks, never two: SessionStart and PreToolUse.
           test "$(grep -c 'auto -Provider' "$CLAUDE_CONFIG_DIR/settings.json")" = 2
           cat "$HOME"/.zshrc "$HOME"/.bashrc "$HOME"/.profile 2>/dev/null |
-            grep -q 'kebacc-codex account switcher'
-          "$HOME/.claude-tools/kebacc-codex" doctor > /dev/null
+            grep -q 'kebacc-antigravity account switcher'
+          "$HOME/.claude-tools/kebacc-antigravity" doctor > /dev/null
 
-          sh plugins/kebacc-codex/uninstall.sh
+          sh plugins/kebacc-antigravity/uninstall.sh
 
-          test ! -e "$HOME/.claude-tools/kebacc-codex"
-          test ! -e "$CLAUDE_CONFIG_DIR/commands/kebacc-list-codex.md"
+          test ! -e "$HOME/.claude-tools/kebacc-antigravity"
+          test ! -e "$CLAUDE_CONFIG_DIR/commands/kebacc-list-antigravity.md"
           # With one half gone the pair that spans both means nothing.
           test ! -e "$CLAUDE_CONFIG_DIR/commands/kebacc-list-all.md"
           test ! -e "$CLAUDE_CONFIG_DIR/commands/kebacc-auto-all.md"
           ! grep -q 'statusLine' "$CLAUDE_CONFIG_DIR/settings.json"
           ! grep -q 'auto -Provider' "$CLAUDE_CONFIG_DIR/settings.json"
           ! cat "$HOME"/.zshrc "$HOME"/.bashrc "$HOME"/.profile 2>/dev/null |
-            grep -q 'kebacc-codex account switcher'
+            grep -q 'kebacc-antigravity account switcher'
           echo 'installed and uninstalled cleanly'
 
       # `install.ps1` is what Windows users run, and nothing else here covers
@@ -144,7 +144,7 @@ jobs:
           $sandbox = Join-Path $env:RUNNER_TEMP ('install-' + [guid]::NewGuid().ToString('N'))
           $tools = Join-Path $sandbox 'tools'
           $env:CLAUDE_CONFIG_DIR = Join-Path $sandbox 'claude'
-          $env:KEBACC_SWITCH_CODEX_ACCOUNTS = Join-Path $sandbox 'codex-accounts'
+          $env:KEBACC_SWITCH_ANTIGRAVITY_ACCOUNTS = Join-Path $sandbox 'antigravity-accounts'
           New-Item -ItemType Directory -Path $env:CLAUDE_CONFIG_DIR -Force | Out-Null
           $settingsPath = Join-Path $env:CLAUDE_CONFIG_DIR 'settings.json'
           # A status line somebody else holds: ours displaces it on the way in
@@ -155,7 +155,7 @@ jobs:
           New-Item -ItemType Directory -Path $tools -Force | Out-Null
           Set-Content -LiteralPath (Join-Path $tools '.version') -Value '0.0.0' -NoNewline
 
-          pwsh -NoProfile -File plugins/kebacc-codex/install.ps1 -ToolsDir $tools -Binary target/release/kebacc-codex.exe -StatusLine -AutoSwitch -NoProfileEdit
+          pwsh -NoProfile -File plugins/kebacc-antigravity/install.ps1 -ToolsDir $tools -Binary target/release/kebacc-antigravity.exe -StatusLine -AutoSwitch -NoProfileEdit
           if ($LASTEXITCODE -ne 0) { throw "install.ps1 exited $LASTEXITCODE" }
 
           $settings = Get-Content -LiteralPath $settingsPath -Raw
@@ -163,22 +163,22 @@ jobs:
           foreach ($needle in 'statusLine', 'SessionStart', 'PreToolUse', '-Midtask', '"opus"') {
             if ($settings -notmatch [regex]::Escape($needle)) { throw "settings.json is missing $needle" }
           }
-          foreach ($name in 'kebacc-list-codex.md', 'kebacc-list-all.md', 'kebacc-auto-all.md') {
+          foreach ($name in 'kebacc-list-antigravity.md', 'kebacc-list-all.md', 'kebacc-auto-all.md') {
             if (-not (Test-Path -LiteralPath (Join-Path $env:CLAUDE_CONFIG_DIR "commands/$name"))) {
               throw "$name was not installed"
             }
           }
 
-          pwsh -NoProfile -File plugins/kebacc-codex/uninstall.ps1 -ToolsDir $tools -NoProfileEdit -Yes
+          pwsh -NoProfile -File plugins/kebacc-antigravity/uninstall.ps1 -ToolsDir $tools -NoProfileEdit -Yes
           if ($LASTEXITCODE -ne 0) { throw "uninstall.ps1 exited $LASTEXITCODE" }
 
           $settings = Get-Content -LiteralPath $settingsPath -Raw
           # Neither hook may outlive the binary they point at, and nothing of
           # ours may be left in the status line either.
-          foreach ($needle in 'kebacc-codex', 'SessionStart', 'PreToolUse') {
+          foreach ($needle in 'kebacc-antigravity', 'SessionStart', 'PreToolUse') {
             if ($settings -match [regex]::Escape($needle)) { throw "uninstall.ps1 left $needle behind" }
           }
-          if (Test-Path -LiteralPath (Join-Path $tools 'kebacc-codex.exe')) { throw 'the binary is still there' }
+          if (Test-Path -LiteralPath (Join-Path $tools 'kebacc-antigravity.exe')) { throw 'the binary is still there' }
           $line = ($settings | ConvertFrom-Json).statusLine.command
           if ($line -ne 'starship prompt') { throw "the displaced status line did not come back: $line" }
           # With one half gone the pair that spans both means nothing.
@@ -204,7 +204,7 @@ jobs:
           sandbox=$(mktemp -d)
           export HOME="$sandbox/home"
           export CLAUDE_CONFIG_DIR="$sandbox/claude"
-          export KEBACC_SWITCH_CODEX_ACCOUNTS="$sandbox/codex-accounts"
+          export KEBACC_SWITCH_ANTIGRAVITY_ACCOUNTS="$sandbox/antigravity-accounts"
           mkdir -p "$HOME" "$CLAUDE_CONFIG_DIR"
 
           # Nothing of this half is published yet, and the bootstrapper installs
@@ -212,27 +212,27 @@ jobs:
           # nothing to install. It says so and stops rather than failing the
           # build; every later run, once a release is out, tests it for real.
           set +e
-          output=$(sh plugins/kebacc-codex/bootstrap.sh --no-profile-edit 2>&1)
+          output=$(sh plugins/kebacc-antigravity/bootstrap.sh --no-profile-edit 2>&1)
           status=$?
           set -e
           echo "$output"
           if [ "$status" -ne 0 ]; then
               case "$output" in
-                  *'no published kebacc-codex-v* release yet'*)
+                  *'no published kebacc-antigravity-v* release yet'*)
                       echo 'No release of this half is published yet, so there is nothing to install.'
                       exit 0 ;;
               esac
               exit "$status"
           fi
 
-          test -x "$HOME/.claude-tools/kebacc-codex"
-          "$HOME/.claude-tools/kebacc-codex" --version
-          "$HOME/.claude-tools/kebacc-codex" doctor > /dev/null
-          test -f "$HOME/.claude-tools/.codex-version"
-          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-codex.md"
+          test -x "$HOME/.claude-tools/kebacc-antigravity"
+          "$HOME/.claude-tools/kebacc-antigravity" --version
+          "$HOME/.claude-tools/kebacc-antigravity" doctor > /dev/null
+          test -f "$HOME/.claude-tools/.antigravity-version"
+          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-antigravity.md"
 
-          sh plugins/kebacc-codex/uninstall.sh
-          test ! -e "$HOME/.claude-tools/kebacc-codex"
+          sh plugins/kebacc-antigravity/uninstall.sh
+          test ! -e "$HOME/.claude-tools/kebacc-antigravity"
           echo 'the published binary installs and runs'
 
       # The Windows half of the one-command install, run the same way as the
@@ -248,37 +248,37 @@ jobs:
           $sandbox = Join-Path $env:RUNNER_TEMP ('bootstrap-' + [guid]::NewGuid().ToString('N'))
           $tools = Join-Path $sandbox 'tools'
           $env:CLAUDE_CONFIG_DIR = Join-Path $sandbox 'claude'
-          $env:KEBACC_SWITCH_CODEX_ACCOUNTS = Join-Path $sandbox 'codex-accounts'
+          $env:KEBACC_SWITCH_ANTIGRAVITY_ACCOUNTS = Join-Path $sandbox 'antigravity-accounts'
           New-Item -ItemType Directory -Path $env:CLAUDE_CONFIG_DIR -Force | Out-Null
 
           # As in the POSIX step: no release of this half is published yet, and
           # the bootstrapper installs a published one, so that case is reported
           # and skipped instead of failing the build.
-          $output = pwsh -NoProfile -File plugins/kebacc-codex/bootstrap.ps1 -ToolsDir $tools -NoProfileEdit 2>&1
+          $output = pwsh -NoProfile -File plugins/kebacc-antigravity/bootstrap.ps1 -ToolsDir $tools -NoProfileEdit 2>&1
           $status = $LASTEXITCODE
           $output | ForEach-Object { Write-Host $_ }
           if ($status -ne 0) {
-            if ($output -match 'No kebacc-codex-v\* release published') {
+            if ($output -match 'No kebacc-antigravity-v\* release published') {
               Write-Host 'No release of this half is published yet, so there is nothing to install.'
               exit 0
             }
             throw "bootstrap.ps1 exited $status"
           }
 
-          $exe = Join-Path $tools 'kebacc-codex.exe'
+          $exe = Join-Path $tools 'kebacc-antigravity.exe'
           if (-not (Test-Path -LiteralPath $exe)) { throw "Nothing was installed at $exe" }
           & $exe --version
           if ($LASTEXITCODE -ne 0) { throw "The installed binary would not report its version" }
           & $exe doctor | Out-Null
           if ($LASTEXITCODE -ne 0) { throw "doctor exited $LASTEXITCODE" }
-          if (-not (Test-Path -LiteralPath (Join-Path $tools '.codex-version'))) {
-            throw '.codex-version was not written'
+          if (-not (Test-Path -LiteralPath (Join-Path $tools '.antigravity-version'))) {
+            throw '.antigravity-version was not written'
           }
-          if (-not (Test-Path -LiteralPath (Join-Path $env:CLAUDE_CONFIG_DIR 'commands/kebacc-list-codex.md'))) {
+          if (-not (Test-Path -LiteralPath (Join-Path $env:CLAUDE_CONFIG_DIR 'commands/kebacc-list-antigravity.md'))) {
             throw 'The slash commands were not installed'
           }
 
-          pwsh -NoProfile -File plugins/kebacc-codex/uninstall.ps1 -ToolsDir $tools -NoProfileEdit -Yes
+          pwsh -NoProfile -File plugins/kebacc-antigravity/uninstall.ps1 -ToolsDir $tools -NoProfileEdit -Yes
           if ($LASTEXITCODE -ne 0) { throw "uninstall.ps1 exited $LASTEXITCODE" }
           if (Test-Path -LiteralPath $exe) { throw 'The uninstaller left the binary behind' }
           Write-Host 'the published binary installs and runs'
@@ -294,16 +294,16 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          . ./plugins/kebacc-codex/shared.ps1
+          . ./plugins/kebacc-antigravity/shared.ps1
           $widen = @(
-            @{ Existing = $null;     Adding = 'codex';  Want = 'codex' }
-            @{ Existing = '';        Adding = 'codex';  Want = 'codex' }
-            @{ Existing = 'claude';  Adding = 'codex';  Want = 'all' }
-            @{ Existing = 'codex';   Adding = 'codex';  Want = 'codex' }
-            @{ Existing = 'all';     Adding = 'codex';  Want = 'all' }
-            @{ Existing = 'off';     Adding = 'codex';  Want = 'codex' }
+            @{ Existing = $null;     Adding = 'antigravity';  Want = 'antigravity' }
+            @{ Existing = '';        Adding = 'antigravity';  Want = 'antigravity' }
+            @{ Existing = 'claude';  Adding = 'antigravity';  Want = 'all' }
+            @{ Existing = 'antigravity';   Adding = 'antigravity';  Want = 'antigravity' }
+            @{ Existing = 'all';     Adding = 'antigravity';  Want = 'all' }
+            @{ Existing = 'off';     Adding = 'antigravity';  Want = 'antigravity' }
             # A scope this version has never heard of is replaced, not widened.
-            @{ Existing = 'sonnet';  Adding = 'codex';  Want = 'codex' }
+            @{ Existing = 'sonnet';  Adding = 'antigravity';  Want = 'antigravity' }
           )
           $bad = 0
           foreach ($case in $widen) {
@@ -325,16 +325,16 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          . ./plugins/kebacc-codex/shared.ps1
-          foreach ($scope in 'codex', 'all', 'claude+codex') {
-            $hooks = '{"SessionStart":[{"hooks":[{"type":"command","command":"C:/t/kebacc-codex.exe auto -Provider SCOPE -Hook"}]}],"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"C:/t/kebacc-codex.exe auto -Provider SCOPE -Hook -Midtask"}]}]}'.Replace('SCOPE', $scope) | ConvertFrom-Json
-            Remove-KebaccAutoPool -Hooks $hooks -Pool 'codex'
+          . ./plugins/kebacc-antigravity/shared.ps1
+          foreach ($scope in 'antigravity', 'all', 'claude+antigravity') {
+            $hooks = '{"SessionStart":[{"hooks":[{"type":"command","command":"C:/t/kebacc-antigravity.exe auto -Provider SCOPE -Hook"}]}],"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"C:/t/kebacc-antigravity.exe auto -Provider SCOPE -Hook -Midtask"}]}]}'.Replace('SCOPE', $scope) | ConvertFrom-Json
+            Remove-KebaccAutoPool -Hooks $hooks -Pool 'antigravity'
             $left = $hooks.PSObject.Properties.Name
             if ($left.Count) { throw "scope '$scope' left $($left -join ', ') behind" }
           }
           # Somebody else's hooks, and the Claude half's, stay where they are.
           $hooks = '{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"my-linter"}]},{"hooks":[{"type":"command","command":"kebacc-switch auto -Provider claude -Hook"}]}]}' | ConvertFrom-Json
-          Remove-KebaccAutoPool -Hooks $hooks -Pool 'codex'
+          Remove-KebaccAutoPool -Hooks $hooks -Pool 'antigravity'
           if (@($hooks.PreToolUse).Count -ne 2) { throw 'it took hooks that were not ours' }
           Write-Host 'every scope disarms, and nobody else is touched'
 

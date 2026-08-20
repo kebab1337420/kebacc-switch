@@ -35,9 +35,13 @@ fn usage_text() {
     println!("  doctor      check the install and the pool (-Protect, -Adopt, -Clean to repair, -Rollback to undo a switch)");
     println!("  statusline  the Claude Code status line, from a payload on stdin");
     println!("  update      install the newest release (-Check to only say whether one is out)");
+    println!("  install     put this binary, the slash commands and the hooks in place (-StatusLine, -AutoSwitch, -ToolsDir, -NoProfileEdit)");
+    println!("  uninstall   take all of that back, leaving the saved logins (-Pool removes those too)");
+    println!("  install-codex   clone, build and install the Codex half from its own branch");
     println!();
     println!("  list -Countdown   both quota windows of every saved account, with their resets (-Refresh reads them again first)");
-    println!("  auto -Midtask     auto from a tool-use hook, at most once every few minutes");
+    println!("  auto -Midtask     auto from a tool-use hook, at most once an interval");
+    println!("  watch             keep checking on a clock of its own, for the stretches with no tool call (the hooks start this)");
     println!("  refresh           read every saved account's quota again, silently (the status line spawns this)");
     println!("  arm -Provider claude|off   arm the session-start auto-switch, or turn it off");
     println!("  arm -Provider claude -Merge         add this pool to whatever is already armed, rather than replacing it");
@@ -68,6 +72,7 @@ fn dispatch(args: &[String]) -> i32 {
         "save" => "add",
         "check" => "doctor",
         "upgrade" | "selfupdate" => "update",
+        "installcodex" | "codex" => "install-codex",
         other => other,
     };
     if !matches!(
@@ -84,6 +89,11 @@ fn dispatch(args: &[String]) -> i32 {
             | "arm"
             | "gitstat"
             | "wire"
+            | "watch"
+            | "install"
+            | "uninstall"
+            | "install-codex"
+            | "reap"
     ) {
         say(&format!("Unknown command '{command}'."), Color::Red);
         usage_text();
@@ -108,6 +118,16 @@ fn dispatch(args: &[String]) -> i32 {
             return 64;
         }
     };
+
+    match command {
+        "install" => return cmd::install::run(&options),
+        "uninstall" => return cmd::uninstall::run(&options),
+        "install-codex" => return cmd::codex::run(&options),
+        // Not in the help: it is the copy an uninstall leaves behind to take
+        // the name of the binary once this process lets go of it.
+        "reap" => return cmd::uninstall::reap(&options),
+        _ => {}
+    }
 
     if command == "wire" {
         return cmd::wire::run(options.statusline, options.updates, options.quiet);
@@ -136,6 +156,13 @@ fn dispatch(args: &[String]) -> i32 {
 
     if command == "auto" && options.hook && !options.spawned {
         cmd::update::maybe();
+        // Session start is the other place a session announces itself, and the
+        // one that gets the watcher up before the first tool call.
+        cmd::watch::ensure_running(&wanted);
+    }
+
+    if command == "watch" {
+        return cmd::watch::run(&wanted);
     }
 
     if command == "auto" && options.midtask {
@@ -192,7 +219,10 @@ fn parse(tokens: &[String]) -> Result<(String, Options), String> {
                 "Unexpected argument '{token}'. Options are named: -Email you@example.com"
             ));
         };
-        let name = name.trim_start_matches('-').to_lowercase();
+        // `-ToolsDir` and `--tools-dir` are the same option: the two installers
+        // this replaced took the Windows spelling and the POSIX one, and the
+        // instructions people have already been given use both.
+        let name = name.trim_start_matches('-').replace(['-', '_'], "").to_lowercase();
         let mut value = || {
             let next = tokens.get(index).filter(|t| !t.starts_with('-'));
             if next.is_some() {
@@ -222,6 +252,21 @@ fn parse(tokens: &[String]) -> Result<(String, Options), String> {
             "spawned" => options.spawned = true,
             "statusline" => options.statusline = Some(true),
             "nostatusline" => options.statusline = Some(false),
+            "toolsdir" => {
+                options.tools_dir = Some(value().ok_or("-ToolsDir needs a directory.")?)
+            }
+            "binary" => options.binary = Some(value().ok_or("-Binary needs a path.")?),
+            // `-AutoSwitch claude` is accepted so the words the old installers
+            // took still work; claude is the only pool this plugin has.
+            "autoswitch" => {
+                let _ = value();
+                options.auto_switch = true;
+            }
+            "noprofileedit" => options.no_profile_edit = true,
+            "pool" => options.pool = true,
+            "source" => options.source = Some(value().ok_or("-Source needs a URL or a path.")?),
+            "branch" => options.branch = Some(value().ok_or("-Branch needs a name.")?),
+            "keepcheckout" => options.keep_checkout = true,
             "autoupdate" => options.updates = Some(true),
             "noautoupdate" => options.updates = Some(false),
             other => return Err(format!("Unknown option '-{other}'.")),

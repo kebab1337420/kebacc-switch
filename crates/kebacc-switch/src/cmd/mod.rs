@@ -1,15 +1,19 @@
 pub mod add;
 pub mod arm;
 pub mod auto;
+pub mod codex;
 pub mod countdown;
 pub mod doctor;
+pub mod install;
 pub mod list;
 pub mod midtask;
 pub mod refresh;
 pub mod remove;
 pub mod statusline;
 pub mod switch;
+pub mod uninstall;
 pub mod update;
+pub mod watch;
 pub mod wire;
 
 use crate::live;
@@ -35,6 +39,19 @@ pub struct Options {
     pub spawned: bool,
     pub statusline: Option<bool>,
     pub updates: Option<bool>,
+    /// Where the binary lives, for `install` and `uninstall`. Unset means
+    /// ~/.claude-tools, and the tests in ci.yml are what set it.
+    pub tools_dir: Option<String>,
+    /// The binary `install` puts in place, when it is not the one running.
+    pub binary: Option<String>,
+    pub auto_switch: bool,
+    pub no_profile_edit: bool,
+    /// `uninstall -Pool`: delete the saved logins too.
+    pub pool: bool,
+    /// Where `install-codex` clones its branch from, and which branch.
+    pub source: Option<String>,
+    pub branch: Option<String>,
+    pub keep_checkout: bool,
 }
 
 pub fn current<'a>(provider: &Provider, pool: &'a [Entry]) -> Option<&'a Entry> {

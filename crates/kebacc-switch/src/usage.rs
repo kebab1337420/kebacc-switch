@@ -9,6 +9,16 @@ use std::path::Path;
 pub const FIVE_HOUR_CAP: f64 = 99.0;
 pub const SEVEN_DAY_CAP: f64 = 99.0;
 const CACHE_SECONDS: i64 = 60;
+/// How close to a cap a reading has to be for the cache to stop being trusted.
+/// Far from the cap, a minute-old number cannot be wrong in a way that matters:
+/// nothing burns 40 points of a window in a minute. Near it, that same minute
+/// is the difference between switching in time and spending a turn on an
+/// account that is already refusing.
+const HOT_MARGIN: f64 = 10.0;
+/// What the cache is worth once a reading is that close. Short enough that the
+/// switch lands inside the margin the threshold leaves, long enough that a
+/// burst of tool calls does not fetch once per call.
+const HOT_CACHE_SECONDS: i64 = 5;
 
 pub fn caps() -> [(&'static str, f64); 2] {
     [
@@ -295,7 +305,22 @@ fn cache_fresh(cache: Option<&Value>) -> bool {
     let Some(at) = parse_time(&at) else {
         return false;
     };
-    (Utc::now() - at).num_seconds() < CACHE_SECONDS
+    (Utc::now() - at).num_seconds() < cache_seconds(cache)
+}
+
+/// How long a cached reading may be trusted, given what it says. A window
+/// already within `HOT_MARGIN` of its cap gets a short leash; everything else
+/// keeps the full minute.
+pub fn cache_seconds(cache: Option<&Value>) -> i64 {
+    let hot = caps().iter().any(|(name, cap)| {
+        window_now(cache.and_then(|c| c.get(*name)))
+            .is_some_and(|window| window.utilization >= cap - HOT_MARGIN)
+    });
+    if hot {
+        HOT_CACHE_SECONDS
+    } else {
+        CACHE_SECONDS
+    }
 }
 
 pub fn save_cache(file: &Path, usage: &Usage) {
@@ -433,6 +458,32 @@ mod tests {
         };
         assert!(!window.stale());
         assert!(window.blocking(super::FIVE_HOUR_CAP));
+    }
+
+    #[test]
+    fn a_reading_far_from_the_cap_keeps_the_full_minute() {
+        let cache = json!({
+            "five_hour": { "utilization": 30.0, "resets_at": "2099-01-01T00:00:00Z" },
+            "seven_day": { "utilization": 20.0, "resets_at": "2099-01-01T00:00:00Z" }
+        });
+        assert_eq!(super::cache_seconds(Some(&cache)), super::CACHE_SECONDS);
+    }
+
+    #[test]
+    fn a_reading_near_the_cap_is_trusted_for_seconds_only() {
+        let cache = json!({
+            "five_hour": { "utilization": 95.0, "resets_at": "2099-01-01T00:00:00Z" },
+            "seven_day": { "utilization": 20.0, "resets_at": "2099-01-01T00:00:00Z" }
+        });
+        assert_eq!(super::cache_seconds(Some(&cache)), super::HOT_CACHE_SECONDS);
+    }
+
+    #[test]
+    fn a_window_that_already_reset_is_not_hot() {
+        let cache = json!({
+            "five_hour": { "utilization": 100.0, "resets_at": "2020-01-01T00:00:00Z" }
+        });
+        assert_eq!(super::cache_seconds(Some(&cache)), super::CACHE_SECONDS);
     }
 
     #[test]

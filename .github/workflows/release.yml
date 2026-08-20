@@ -117,14 +117,16 @@ jobs:
           path: dist
           merge-multiple: true
 
-      # The installers are published beside the binaries so a machine with
-      # neither a clone nor a toolchain can start from one file.
+      # install.bat is published beside the binaries so a Windows machine with
+      # neither a clone nor a toolchain can start from one file. The other
+      # platforms need no script of their own: the binary is the installer, and
+      # the README carries the one line that downloads it.
       - name: Attach everything to the release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          cp plugins/kebacc-switch/bootstrap.ps1 plugins/kebacc-switch/bootstrap.sh install.bat dist/
+          cp install.bat dist/
           ls -l dist
           # The release is held as a draft until its binaries are on it. A
           # release page that exists with nothing to download is not much use

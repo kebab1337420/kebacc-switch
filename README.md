@@ -24,7 +24,7 @@ again mid-task, before you notice you were capped.
 
 ```
 crates/kebacc-switch/    the binary
-plugins/kebacc-switch/   the installer, the hooks and the slash commands
+plugins/kebacc-switch/   the slash commands, compiled into the binary
 ```
 
 ---
@@ -35,47 +35,61 @@ plugins/kebacc-switch/   the installer, the hooks and the slash commands
 
 Download **`install.bat`** from the
 [latest release](https://github.com/kebab1337420/kebacc-switch/releases) and run
-it. It fetches the published binary and the plugin, installs both, and needs no
-clone, no Rust and no administrator. Arguments go through to the installer, so
-`install.bat -StatusLine -AutoSwitch all` works.
+it. It downloads the published binary and asks it to install itself, and needs
+no clone, no Rust and no administrator. Arguments go through to the installer,
+so `install.bat -StatusLine -AutoSwitch all` works.
 
-`bootstrap.ps1`, published beside it on the same release, is what it runs — a
-plain script you can read first if you would rather see what it does. It comes
-from the release rather than from the branch on purpose: raw file URLs are
-served through a cache that can be minutes behind, and an installer that
-sometimes runs yesterday's code is worse than one pinned to a release. A change
-to it therefore needs a fresh upload to reach anyone.
+There is nothing else to fetch: the slash commands travel inside the binary. The
+asset is taken through the GitHub API rather than through the plain download
+URL, which is served by a cache that keeps handing out the previous file for a
+while after an asset is replaced.
 
 ### macOS and Linux, no toolchain
 
+One file, downloaded and asked to install itself. Pick the name for the machine
+you are on — `aarch64-apple-darwin`, `x86_64-apple-darwin`,
+`x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`:
+
 ```sh
-curl -fsSL https://github.com/kebab1337420/kebacc-switch/releases/download/kebacc-switch-v0.2.5/bootstrap.sh | sh
+name=kebacc-switch-aarch64-apple-darwin
+url=$(curl -fsSL https://api.github.com/repos/kebab1337420/kebacc-switch/releases/latest |
+  grep -o "https://[^\"]*/$name")
+curl -fsSL "$url" -o /tmp/kebacc-switch && chmod +x /tmp/kebacc-switch
+/tmp/kebacc-switch install --status-line --auto-switch claude
 ```
 
-The same thing for Apple silicon, Intel Macs and x86_64 or arm64 Linux: it picks
-the binary for the machine it is on, unpacks the plugin from the source archive
-of that tag, and runs `install.sh`. Options go through after `sh -s --`, so
-`sh -s -- --status-line --auto-switch` works. Only `curl` and `tar` are needed.
+With the `gh` CLI on the machine, the same thing is two lines:
+
+```sh
+gh release download --repo kebab1337420/kebacc-switch --pattern kebacc-switch-aarch64-apple-darwin --dir /tmp
+chmod +x /tmp/kebacc-switch-* && /tmp/kebacc-switch-* install
+```
+
+The binary installs itself into `~/.claude-tools` and takes the slash commands
+with it, so the copy in `/tmp` can go afterwards.
 
 ### From source
 
 ```sh
 cargo build --release
-pwsh -NoProfile -File plugins/kebacc-switch/install.ps1   # Windows
-sh plugins/kebacc-switch/install.sh                       # macOS, Linux
+./target/release/kebacc-switch install
 ```
 
-The installer copies `target/release/kebacc-switch` into `~/.claude-tools`, then
-writes the hooks, the status line and the slash commands into your Claude Code
-settings. It backs the settings file up first and refuses to write a result that
-would not parse. `uninstall.ps1`, or `uninstall.sh`, takes all of it back out.
+The installer copies the binary into `~/.claude-tools`, then writes the hooks,
+the status line and the slash commands into your Claude Code settings. It backs
+the settings file up first and refuses to write a result that would not parse.
+`kebacc-switch uninstall` takes all of it back out.
 
-| Windows | macOS, Linux | Effect |
-| --- | --- | --- |
-| `-StatusLine` | `--status-line` | point the Claude Code status line at the switcher |
-| `-AutoSwitch claude` | `--auto-switch` | run `auto` at session start and mid-task |
-| `-NoAutoUpdate` | `--no-auto-update` | leave the daily self-update off |
-| `-NoProfileEdit` | `--no-profile-edit` | do not touch the shell profile |
+Every option is spelled both ways — `-StatusLine` and `--status-line` reach the
+same flag, so a habit from either shell works:
+
+| Option | Effect |
+| --- | --- |
+| `-StatusLine` | point the Claude Code status line at the switcher |
+| `-AutoSwitch claude` | run `auto` at session start and mid-task |
+| `-NoAutoUpdate` | leave the daily self-update off |
+| `-NoProfileEdit` | do not touch the shell profile |
+| `-ToolsDir <dir>` | install somewhere other than `~/.claude-tools` |
 
 ---
 
@@ -170,7 +184,8 @@ repository. It has its own binary, its own pool and its own slash commands
 `/kebacc-remove-codex`, `/kebacc-auto-codex`), and the two install side by
 side. There is no published release for it, so `/kebacc-install-codex` clones
 the branch, builds it with cargo and runs its installer; the same thing by hand
-is `plugins/kebacc-switch/install-codex.ps1`.
+is `kebacc-switch install-codex`, which clones that branch, builds it and
+runs whatever installer it carries.
 
 **Exit codes**
 

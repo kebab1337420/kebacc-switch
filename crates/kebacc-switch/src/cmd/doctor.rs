@@ -274,7 +274,7 @@ fn check_settings(report: &mut Report) {
         }
     } else {
         say(
-            "  status line not installed. Add it with: install.ps1 -StatusLine",
+            "  status line not installed. Add it with: kebacc-switch install -StatusLine",
             Color::Dim,
         );
     }
@@ -282,7 +282,7 @@ fn check_settings(report: &mut Report) {
     let hooks = auto_hooks(&settings);
     match hooks.len() {
         0 => say(
-            "  auto does not run on its own. Arm it with: install.ps1 -AutoSwitch all",
+            "  auto does not run on its own. Arm it with: kebacc-switch install -AutoSwitch all",
             Color::Dim,
         ),
         1 => report.good(&format!(
@@ -303,6 +303,18 @@ fn check_settings(report: &mut Report) {
         count => report.warn(&format!(
             "{count} mid-task hooks run auto. Re-arm it to leave one: /kebacc-auto-claude"
         )),
+    }
+
+    // The watcher covers what no hook can: a turn with no tool call in it. It
+    // is started by the hooks and dies with the session, so its absence is
+    // worth a line but never an alarm.
+    if super::watch::on_duty() {
+        report.good(&format!(
+            "a watcher is on duty, checking every {}s even with no tool call",
+            super::watch::interval().as_secs()
+        ));
+    } else {
+        report.good("no watcher running yet. The next hook starts one.");
     }
 }
 

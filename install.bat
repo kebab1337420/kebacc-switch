@@ -1,15 +1,11 @@
 @echo off
 rem Double-click installer for kebacc-switch on Windows.
 rem
-rem It takes bootstrap.ps1 from the newest release and runs it. That script
-rem fetches the published binary and the plugin and installs both. Nothing here
-rem needs a clone, a Rust toolchain, or an administrator.
+rem It downloads the published binary and asks it to install itself. The binary
+rem carries the slash commands inside it, so there is nothing else to fetch:
+rem no clone, no Rust toolchain, no administrator.
 rem
-rem The script comes from the release rather than from the branch: raw file URLs
-rem are served through a cache that can be minutes behind, and an installer that
-rem sometimes runs yesterday's code is worse than one pinned to a release.
-rem
-rem The script is fetched through the API rather than through the plain download
+rem The asset is fetched through the API rather than through the plain download
 rem URL, which is served by a cache that keeps handing out the previous file for
 rem a while after an asset is replaced.
 rem
@@ -20,32 +16,42 @@ rem
 rem Arguments are passed through to the installer by name, so this works:
 rem
 rem   install.bat -StatusLine -AutoSwitch all
+rem
+rem Set KEBACC_NO_PAUSE to anything to skip the prompt at the end, which is what
+rem CI does: there is nobody there to press a key.
 
 setlocal
 
 set "REPO=kebab1337420/kebacc-switch"
-set "SCRIPT=%TEMP%\kebacc-switch-bootstrap.ps1"
+set "EXE=%TEMP%\kebacc-switch-installer.exe"
+
+rem The name is the one cmd/update.rs asks for, so the machine that updates
+rem itself later looks for the same file it was installed from.
+set "ASSET=kebacc-switch-x86_64-pc-windows-msvc.exe"
+if /i "%PROCESSOR_ARCHITECTURE%"=="ARM64" set "ASSET=kebacc-switch-aarch64-pc-windows-msvc.exe"
 
 rem PowerShell 7 when it is here, the one Windows ships with otherwise.
 set "PS=powershell"
 where pwsh >nul 2>&1 && set "PS=pwsh"
 
-echo Fetching the installer...
-"%PS%" -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; try{[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12}catch{}; $h=@{'User-Agent'='kebacc-switch-installer'}; $answer=Invoke-RestMethod ('https://api.github.com/repos/'+$env:REPO+'/releases') -Headers $h; $r=@(@($answer) | Where-Object {-not $_.draft}) | Select-Object -First 1; if(-not $r){throw 'No release has been published yet.'}; $a=@(@($r.assets) | Where-Object {$_.name -eq 'bootstrap.ps1'}) | Select-Object -First 1; if(-not $a){throw ($r.tag_name+' has no bootstrap.ps1 attached to it.')}; Invoke-WebRequest $a.url -OutFile $env:SCRIPT -Headers @{'User-Agent'='kebacc-switch-installer';'Accept'='application/octet-stream'}"
+echo Fetching kebacc-switch...
+"%PS%" -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; try{[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12}catch{}; $h=@{'User-Agent'='kebacc-switch-installer'}; if($env:GITHUB_TOKEN){$h['Authorization']='Bearer '+$env:GITHUB_TOKEN}; $answer=Invoke-RestMethod ('https://api.github.com/repos/'+$env:REPO+'/releases') -Headers $h; $r=@(@($answer) | Where-Object {-not $_.draft -and -not $_.prerelease}) | Select-Object -First 1; if(-not $r){throw 'No release has been published yet.'}; $a=@(@($r.assets) | Where-Object {$_.name -eq $env:ASSET}) | Select-Object -First 1; if(-not $a){throw ($r.tag_name+' has no '+$env:ASSET+' attached to it.')}; $d=$h.Clone(); $d['Accept']='application/octet-stream'; Invoke-WebRequest $a.url -OutFile $env:EXE -Headers $d"
 if errorlevel 1 goto failed
 
-echo Saved to %SCRIPT%
-"%PS%" -NoProfile -ExecutionPolicy Bypass -File "%SCRIPT%" %*
+echo Saved to %EXE%
+"%EXE%" install %*
 if errorlevel 1 goto failed
 
-del "%SCRIPT%" >nul 2>&1
+del "%EXE%" >nul 2>&1
 echo.
 echo Done. Restart Claude Code, then run /kebacc-add-claude to save the login you are on.
+if defined KEBACC_NO_PAUSE exit /b 0
 pause
 exit /b 0
 
 :failed
 echo.
-echo Install failed. The script it was running is at %SCRIPT% if you want to read it.
+echo Install failed. The binary it was running is at %EXE% if you want to try it by hand.
+if defined KEBACC_NO_PAUSE exit /b 1
 pause
 exit /b 1

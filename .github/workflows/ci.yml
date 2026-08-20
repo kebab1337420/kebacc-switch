@@ -2,7 +2,8 @@ name: ci
 
 # The project is written on Windows, so this is what says whether it still
 # builds anywhere else. Every push runs the tests on the three platforms it
-# claims to support, and lints the scripts each of them installs with.
+# claims to support, and installs the binary it just built on each of them:
+# the binary is its own installer, so that is the installer being tested.
 on:
   push:
     branches: ["**"]
@@ -42,14 +43,6 @@ jobs:
       - name: It runs
         run: cargo run --release -p kebacc-switch -- --version
 
-      - name: The shell scripts parse
-        if: runner.os != 'Windows'
-        run: |
-          for script in plugins/kebacc-switch/*.sh; do
-            sh -n "$script"
-            echo "$script ok"
-          done
-
       # The version a plugin stamps into its marker file, the version the binary
       # reports, and the version cargo built are three copies of one number. A
       # release where they disagree installs a binary that then thinks it is out
@@ -66,36 +59,38 @@ jobs:
           }
           echo "every VERSION says $crate"
 
-      # The installers sweep the commands directory by pattern and skip anything
-      # with `codex` in the name, because those belong to the other plugin. A
-      # command shipped here that the sweep skips is one no update ever replaces
-      # and no uninstall ever removes, so the pattern and what is shipped have
-      # to agree.
-      - name: Every command this plugin ships is one it also removes
+      # The binary carries the slash commands inside it, one include_str! each,
+      # so a command added to the directory and forgotten in COMMANDS ships as
+      # a command nobody gets, and a name left in COMMANDS after its file is
+      # deleted fails the build. The sweep side of the same promise — that
+      # every shipped command is one the uninstall also takes back — is a unit
+      # test in install.rs.
+      - name: Every command on disk is one the binary carries
         if: runner.os != 'Windows'
         run: |
           set -eu
           bad=0
+          # The include_str! paths, not every quoted name in the file: the
+          # tests name commands this plugin deliberately does not carry.
+          carried=$(grep -o 'commands/kebacc-[^"]*\.md' crates/kebacc-switch/src/cmd/install.rs |
+            sed 's|.*/||' | sort -u)
           for file in plugins/kebacc-switch/src/commands/*.md; do
             name=${file##*/}
-            case "$name" in
-                kebacc-*.md) ;;
-                *) echo "$name is not swept: the installers only know kebacc-*.md" >&2; bad=1; continue ;;
-            esac
-            # The one command with `codex` in its name that is ours, and the
-            # uninstaller names it by hand for exactly this reason.
-            case "$name" in
-                kebacc-install-codex.md) grep -q "$name" plugins/kebacc-switch/uninstall.sh ||
-                    { echo "$name is skipped by the codex filter and not named in uninstall.sh" >&2; bad=1; } ;;
-                *codex*) echo "$name is skipped by the codex filter in both installers" >&2; bad=1 ;;
-            esac
+            echo "$carried" | grep -qx "$name" ||
+              { echo "$name is on disk but not carried by the binary" >&2; bad=1; }
+          done
+          for name in $carried; do
+            [ -f "plugins/kebacc-switch/src/commands/$name" ] ||
+              { echo "$name is carried by the binary but not on disk" >&2; bad=1; }
           done
           test "$bad" = 0
-          echo "$(ls plugins/kebacc-switch/src/commands/*.md | wc -l | tr -d ' ') commands, all swept"
+          echo "$(ls plugins/kebacc-switch/src/commands/*.md | wc -l | tr -d ' ') commands, all carried"
 
-      # The installer is the half that has never been run outside Windows, so it
-      # is run here for real, against directories made for the occasion.
-      - name: install.sh puts everything where it says
+      # There is no install script any more: `kebacc-switch install` is the
+      # installer, and it carries the slash commands inside it. What used to be
+      # install.sh and install.ps1 is this one code path, run here for real on
+      # every platform, against directories made for the occasion.
+      - name: The binary installs and uninstalls itself
         if: runner.os != 'Windows'
         run: |
           set -eu
@@ -106,7 +101,7 @@ jobs:
           mkdir -p "$HOME" "$CLAUDE_CONFIG_DIR"
           echo '{"model":"opus"}' > "$CLAUDE_CONFIG_DIR/settings.json"
 
-          sh plugins/kebacc-switch/install.sh             --binary target/release/kebacc-switch --status-line --auto-switch
+          target/release/kebacc-switch install --status-line --auto-switch claude
 
           test -x "$HOME/.claude-tools/kebacc-switch"
           test "$(cat "$HOME/.claude-tools/.version")" = "$(cat plugins/kebacc-switch/VERSION)"
@@ -122,14 +117,17 @@ jobs:
             grep -q 'kebacc-switch account switcher'
           "$HOME/.claude-tools/kebacc-switch" doctor > /dev/null
 
-          sh plugins/kebacc-switch/uninstall.sh
+          # --yes: the uninstall asks before taking anything, and there is no
+          # terminal here to answer it from. It is run from the installed copy,
+          # which is how somebody actually reaches it.
+          "$HOME/.claude-tools/kebacc-switch" uninstall --yes
 
           test ! -e "$HOME/.claude-tools/kebacc-switch"
           # Every command that was installed, not just the easy ones: the sweep
           # skips `*codex*`, and this plugin ships one such name of its own.
           for file in plugins/kebacc-switch/src/commands/*.md; do
             test ! -e "$CLAUDE_CONFIG_DIR/commands/${file##*/}" || {
-              echo "uninstall.sh left ${file##*/} behind" >&2
+              echo "the uninstall left ${file##*/} behind" >&2
               exit 1
             }
           done
@@ -141,10 +139,11 @@ jobs:
             grep -q 'kebacc-switch account switcher'
           echo 'installed and uninstalled cleanly'
 
-      # `install.ps1` is what Windows users run, and it now hands the hooks to
-      # `arm` rather than writing them itself. Nothing else here exercises it:
-      # the bootstrap job below installs the published release, not this build.
-      - name: install.ps1 puts everything where it says
+      # The same on Windows, where deleting a running binary is not allowed:
+      # the uninstall hands the last of it to a copy it leaves behind, and this
+      # is where that is checked on a machine that is not the one it was
+      # written on.
+      - name: The binary installs and uninstalls itself
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
@@ -159,8 +158,8 @@ jobs:
           # and has to hand it back on the way out.
           '{"model":"opus","statusLine":{"type":"command","command":"starship prompt"}}' | Set-Content -LiteralPath $settingsPath
 
-          pwsh -NoProfile -File plugins/kebacc-switch/install.ps1 -ToolsDir $tools -Binary target/release/kebacc-switch.exe -StatusLine -AutoSwitch claude -NoProfileEdit
-          if ($LASTEXITCODE -ne 0) { throw "install.ps1 exited $LASTEXITCODE" }
+          target/release/kebacc-switch.exe install -ToolsDir $tools -StatusLine -AutoSwitch claude -NoProfileEdit
+          if ($LASTEXITCODE -ne 0) { throw "install exited $LASTEXITCODE" }
 
           $settings = Get-Content -LiteralPath $settingsPath -Raw
           # Both halves, and the settings that were already there.
@@ -168,30 +167,36 @@ jobs:
             if ($settings -notmatch [regex]::Escape($needle)) { throw "settings.json is missing $needle" }
           }
 
-          pwsh -NoProfile -File plugins/kebacc-switch/uninstall.ps1 -ToolsDir $tools -NoProfileEdit -Yes
-          if ($LASTEXITCODE -ne 0) { throw "uninstall.ps1 exited $LASTEXITCODE" }
+          $exe = Join-Path $tools 'kebacc-switch.exe'
+          & $exe uninstall -ToolsDir $tools -NoProfileEdit -Yes
+          if ($LASTEXITCODE -ne 0) { throw "uninstall exited $LASTEXITCODE" }
 
           $settings = Get-Content -LiteralPath $settingsPath -Raw
           # Neither hook may outlive the binary they point at, and nothing of
           # ours may be left in the status line either.
           foreach ($needle in 'kebacc-switch', 'SessionStart', 'PreToolUse') {
-            if ($settings -match [regex]::Escape($needle)) { throw "uninstall.ps1 left $needle behind" }
+            if ($settings -match [regex]::Escape($needle)) { throw "the uninstall left $needle behind" }
           }
-          if (Test-Path -LiteralPath (Join-Path $tools 'kebacc-switch.exe')) { throw 'the binary is still there' }
+          # The copy left behind waits for this process to let go of the name,
+          # so the binary goes a moment after the command that removed it.
+          $deadline = (Get-Date).AddSeconds(30)
+          while ((Test-Path -LiteralPath $exe) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }
+          if (Test-Path -LiteralPath $exe) { throw 'the binary is still there' }
+          if (Test-Path -LiteralPath $tools) { throw 'the tools directory is still there' }
           $line = ($settings | ConvertFrom-Json).statusLine.command
           if ($line -ne 'starship prompt') { throw "the displaced status line did not come back: $line" }
           Write-Host 'installed and uninstalled cleanly, and starship has its status line back'
 
-      # The published binary and the one-command install are what most people
-      # will actually run, so the newest release is installed here the way they
-      # would install it.
-      - name: bootstrap.sh installs the published release
+      # The published binary is what most people will actually run, so the
+      # newest release is installed here the way they would install it: one
+      # file downloaded, asked to install itself.
+      - name: The published release installs and runs
         if: runner.os != 'Windows'
         # The anonymous rate limit is per address, and a runner shares its
         # address with everything else on that machine, so an unauthenticated
         # lookup here answers 403 often enough to fail a green build.
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
           sandbox=$(mktemp -d)
@@ -200,61 +205,43 @@ jobs:
           export KEBACC_SWITCH_ACCOUNTS="$sandbox/accounts"
           mkdir -p "$HOME" "$CLAUDE_CONFIG_DIR"
 
-          sh plugins/kebacc-switch/bootstrap.sh --no-profile-edit
+          # The same names cmd/update.rs asks for, so this downloads the file a
+          # machine updating itself would have downloaded.
+          case "$(uname -s)-$(uname -m)" in
+            Darwin-arm64)  asset=kebacc-switch-aarch64-apple-darwin ;;
+            Darwin-x86_64) asset=kebacc-switch-x86_64-apple-darwin ;;
+            Linux-aarch64) asset=kebacc-switch-aarch64-unknown-linux-gnu ;;
+            *)             asset=kebacc-switch-x86_64-unknown-linux-gnu ;;
+          esac
+          gh release download --repo "$GITHUB_REPOSITORY" --pattern "$asset" --dir "$sandbox" --clobber
+          chmod +x "$sandbox/$asset"
+
+          "$sandbox/$asset" install --no-profile-edit
 
           test -x "$HOME/.claude-tools/kebacc-switch"
           "$HOME/.claude-tools/kebacc-switch" --version
           "$HOME/.claude-tools/kebacc-switch" doctor > /dev/null
-          sh plugins/kebacc-switch/uninstall.sh
+          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-claude.md"
+          "$HOME/.claude-tools/kebacc-switch" uninstall --yes
           echo 'the published binary installs and runs'
 
-      # The Windows half of the one-command install, run the same way as the
-      # POSIX one: against the newest release, into directories made for the
-      # occasion, and with the profile left alone since it lives outside both.
-      - name: bootstrap.ps1 installs the published release
+      # The Windows half of the same thing, run through install.bat: that file
+      # is what a double-click reaches, and nothing else tests it.
+      - name: install.bat installs the published release
         if: runner.os == 'Windows'
-        shell: pwsh
+        shell: cmd
         env:
           GITHUB_TOKEN: ${{ github.token }}
+          # Nobody is here to press a key at the end of it.
+          KEBACC_NO_PAUSE: "1"
         run: |
-          $ErrorActionPreference = 'Stop'
-          $sandbox = Join-Path $env:RUNNER_TEMP ('bootstrap-' + [guid]::NewGuid().ToString('N'))
-          $tools = Join-Path $sandbox 'tools'
-          $env:CLAUDE_CONFIG_DIR = Join-Path $sandbox 'claude'
-          $env:KEBACC_SWITCH_ACCOUNTS = Join-Path $sandbox 'accounts'
-          New-Item -ItemType Directory -Path $env:CLAUDE_CONFIG_DIR -Force | Out-Null
-
-          pwsh -NoProfile -File plugins/kebacc-switch/bootstrap.ps1 -ToolsDir $tools -NoProfileEdit
-          if ($LASTEXITCODE -ne 0) { throw "bootstrap.ps1 exited $LASTEXITCODE" }
-
-          $exe = Join-Path $tools 'kebacc-switch.exe'
-          if (-not (Test-Path -LiteralPath $exe)) { throw "Nothing was installed at $exe" }
-          & $exe --version
-          if ($LASTEXITCODE -ne 0) { throw "The installed binary would not report its version" }
-          & $exe doctor | Out-Null
-          if ($LASTEXITCODE -ne 0) { throw "doctor exited $LASTEXITCODE" }
-          if (-not (Test-Path -LiteralPath (Join-Path $env:CLAUDE_CONFIG_DIR 'commands/kebacc-list-claude.md'))) {
-            throw 'The slash commands were not installed'
-          }
-
-          pwsh -NoProfile -File plugins/kebacc-switch/uninstall.ps1 -ToolsDir $tools -NoProfileEdit -Yes
-          if ($LASTEXITCODE -ne 0) { throw "uninstall.ps1 exited $LASTEXITCODE" }
-          if (Test-Path -LiteralPath $exe) { throw 'The uninstaller left the binary behind' }
-          Write-Host 'the published binary installs and runs'
-
-      - name: The PowerShell scripts parse
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $bad = 0
-          foreach ($script in Get-ChildItem plugins/kebacc-switch/*.ps1) {
-            $errors = $null
-            [System.Management.Automation.Language.Parser]::ParseFile($script.FullName, [ref]$null, [ref]$errors) | Out-Null
-            if ($errors.Count) {
-              Write-Host "$($script.Name) FAILED: $($errors[0].Message)"
-              $bad = 1
-            } else {
-              Write-Host "$($script.Name) ok"
-            }
-          }
-          exit $bad
+          set "CLAUDE_CONFIG_DIR=%RUNNER_TEMP%\bat-claude"
+          set "KEBACC_SWITCH_ACCOUNTS=%RUNNER_TEMP%\bat-accounts"
+          set "TOOLS=%RUNNER_TEMP%\bat-tools"
+          mkdir "%CLAUDE_CONFIG_DIR%"
+          call install.bat -ToolsDir "%TOOLS%" -NoProfileEdit || exit /b 1
+          "%TOOLS%\kebacc-switch.exe" --version || exit /b 1
+          "%TOOLS%\kebacc-switch.exe" doctor >nul || exit /b 1
+          if not exist "%CLAUDE_CONFIG_DIR%\commands\kebacc-list-claude.md" exit /b 1
+          "%TOOLS%\kebacc-switch.exe" uninstall -ToolsDir "%TOOLS%" -NoProfileEdit -Yes || exit /b 1
+          echo the published binary installs and runs

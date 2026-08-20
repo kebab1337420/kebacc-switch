@@ -476,7 +476,10 @@ fn function_line(entry: &Path, profile: &Path) -> String {
         .extension()
         .is_some_and(|kind| kind.eq_ignore_ascii_case("ps1"))
     {
-        format!("function kebacc-codex {{ & \"{}\" @args }}", entry.display())
+        format!(
+            "function kebacc-codex {{ & \"{}\" @args }}",
+            entry.display()
+        )
     } else {
         format!("kebacc-codex() {{ \"{}\" \"$@\"; }}", entry.display())
     }

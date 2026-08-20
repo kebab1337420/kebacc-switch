@@ -134,7 +134,10 @@ pub fn run(opts: &Options) -> i32 {
     if opts.pool {
         if pool.is_dir() {
             let _ = std::fs::remove_dir_all(&pool);
-            say(&format!("Deleted the pool {}", pool.display()), Color::Yellow);
+            say(
+                &format!("Deleted the pool {}", pool.display()),
+                Color::Yellow,
+            );
         }
     } else if pool.is_dir() {
         say(
@@ -178,7 +181,10 @@ fn settings_point_here(tools: &Path) -> bool {
         return true;
     };
     let mut ours = Vec::new();
-    if let Some(line) = settings.get("statusLine").and_then(|line| line.get("command")) {
+    if let Some(line) = settings
+        .get("statusLine")
+        .and_then(|line| line.get("command"))
+    {
         if let Some(text) = line.as_str() {
             ours.push(text.to_string());
         }

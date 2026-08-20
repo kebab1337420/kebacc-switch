@@ -3,12 +3,14 @@ pub mod arm;
 pub mod auto;
 pub mod countdown;
 pub mod doctor;
+pub mod install;
 pub mod list;
 pub mod midtask;
 pub mod refresh;
 pub mod remove;
 pub mod statusline;
 pub mod switch;
+pub mod uninstall;
 pub mod update;
 pub mod wire;
 
@@ -35,6 +37,16 @@ pub struct Options {
     pub spawned: bool,
     pub statusline: Option<bool>,
     pub updates: Option<bool>,
+    /// Where the binary lives. The installer and the uninstaller both take it,
+    /// and `ci.yml` passes one to keep a run out of the runner's home.
+    pub tools_dir: Option<String>,
+    /// The build to install, when it is not the one running.
+    pub binary: Option<String>,
+    pub auto_switch: bool,
+    pub no_profile_edit: bool,
+    /// Delete the saved logins along with the install. Off by default: they are
+    /// the expensive thing to rebuild.
+    pub pool: bool,
 }
 
 pub fn current<'a>(provider: &Provider, pool: &'a [Entry]) -> Option<&'a Entry> {

@@ -117,15 +117,16 @@ jobs:
           path: dist
           merge-multiple: true
 
-      # The installers are published beside the binaries so a machine with
-      # neither a clone nor a toolchain can start from one file.
+      # The double-click installer is published beside the binaries. It is the
+      # only script left: the binary carries its own slash commands and installs
+      # itself, so a machine with neither a clone nor a toolchain needs nothing
+      # but one downloaded file.
       - name: Attach everything to the release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          cp plugins/kebacc-codex/bootstrap.ps1 plugins/kebacc-codex/bootstrap.sh \
-             install-codex.bat dist/
+          cp install-codex.bat dist/
           ls -l dist
           # The release is held as a draft until its binaries are on it. A
           # release page that exists with nothing to download is not much use

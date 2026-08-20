@@ -27,8 +27,8 @@ line are its. The pool is Codex's, in `~/.codex/auth.json`. Nothing here reads
 or writes a Claude login.
 
 ```
-crates/kebacc-codex/    the binary
-plugins/kebacc-codex/    the installers, the hooks, the slash commands
+crates/kebacc-codex/     the binary, which installs itself
+plugins/kebacc-codex/    the slash commands, compiled into the binary
 ```
 
 The Claude pool is a separate switcher, `kebacc-switch`, on the `master` branch
@@ -44,47 +44,63 @@ tags, and each one reads and rewrites only the hooks that run its own binary.
 
 Download **`install-codex.bat`** from the
 [latest release](https://github.com/kebab1337420/kebacc-switch/releases) and run
-it. It fetches the published binary and the plugin, installs both, and needs no
-clone, no Rust and no administrator. Arguments go through to the installer, so
-`install-codex.bat -StatusLine -AutoSwitch` works.
+it. It downloads the published binary and asks it to install itself, and needs
+no clone, no Rust and no administrator. Arguments go through to the installer,
+so `install-codex.bat -StatusLine -AutoSwitch` works.
 
-`bootstrap.ps1`, published beside it on the same release, is what it runs — a
-plain script you can read first if you would rather see what it does. It comes
-from the release rather than from the branch on purpose: raw file URLs are
-served through a cache that can be minutes behind, and an installer that
-sometimes runs yesterday's code is worse than one pinned to a release. A change
-to it therefore needs a fresh upload to reach anyone.
+There is nothing else to fetch: the slash commands travel inside the binary. The
+asset is taken through the GitHub API rather than through the plain download
+URL, which is served by a cache that keeps handing out the previous file for a
+while after an asset is replaced. It asks for the newest release tagged
+`kebacc-codex-v*`, since the same repository publishes the Claude half under its
+own tags.
 
 ### macOS and Linux, no toolchain
 
+One file, downloaded and asked to install itself. Pick the name for the machine
+you are on — `aarch64-apple-darwin`, `x86_64-apple-darwin`,
+`x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`:
+
 ```sh
-curl -fsSL https://github.com/kebab1337420/kebacc-switch/releases/download/kebacc-codex-v0.2.6/bootstrap.sh | sh
+name=kebacc-codex-aarch64-apple-darwin
+url=$(curl -fsSL https://api.github.com/repos/kebab1337420/kebacc-switch/releases |
+  grep -o "https://[^\"]*/$name" | head -n 1)
+curl -fsSL "$url" -o /tmp/kebacc-codex && chmod +x /tmp/kebacc-codex
+/tmp/kebacc-codex install --status-line --auto-switch
 ```
 
-It picks the binary for the machine it is on — Apple silicon, Intel Macs,
-x86_64 or arm64 Linux — unpacks the plugin from the source archive of that tag,
-and runs `install.sh`. Options go through after `sh -s --`, so
-`sh -s -- --status-line --auto-switch` works. Only `curl` and `tar` are needed.
+With the `gh` CLI on the machine, the same thing is two lines:
+
+```sh
+gh release download --repo kebab1337420/kebacc-switch --pattern kebacc-codex-aarch64-apple-darwin --dir /tmp
+chmod +x /tmp/kebacc-codex-* && /tmp/kebacc-codex-* install
+```
+
+The binary installs itself into `~/.claude-tools` and takes the slash commands
+with it, so the copy in `/tmp` can go afterwards.
 
 ### From source
 
 ```sh
-cargo build --release
-pwsh -NoProfile -File plugins/kebacc-codex/install.ps1   # Windows
-sh plugins/kebacc-codex/install.sh                       # macOS, Linux
+cargo build --release -p kebacc-codex
+./target/release/kebacc-codex install
 ```
 
-The installer copies `target/release/kebacc-codex` into `~/.claude-tools`, then
-writes the hooks, the status line and the slash commands into your Claude Code
-settings. It backs the settings file up first and refuses to write a result that
-would not parse. `uninstall.ps1`, or `uninstall.sh`, takes all of it back out.
+The installer copies the binary into `~/.claude-tools`, then writes the hooks,
+the status line and the slash commands into your Claude Code settings. It backs
+the settings file up first and refuses to write a result that would not parse.
+`kebacc-codex uninstall` takes all of it back out.
 
-| Windows | macOS, Linux | Effect |
-| --- | --- | --- |
-| `-StatusLine` | `--status-line` | point the Claude Code status line at the switcher |
-| `-AutoSwitch` | `--auto-switch` | run `auto` at every session start |
-| `-NoAutoUpdate` | `--no-auto-update` | leave the daily self-update off |
-| `-NoProfileEdit` | `--no-profile-edit` | do not touch the shell profile |
+Every option is spelled both ways — `-StatusLine` and `--status-line` reach the
+same flag, so a habit from either shell works:
+
+| Option | Effect |
+| --- | --- |
+| `-StatusLine` | point the Claude Code status line at the switcher |
+| `-AutoSwitch` | run `auto` at session start and mid-task |
+| `-NoAutoUpdate` | leave the daily self-update off |
+| `-NoProfileEdit` | do not touch the shell profile |
+| `-ToolsDir <dir>` | install somewhere other than `~/.claude-tools` |
 
 ---
 

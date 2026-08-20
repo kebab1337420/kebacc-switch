@@ -10,27 +10,36 @@ login is read or written anywhere in it.
 
 ## Installing
 
-Nothing here needs a clone or a Rust toolchain: the installers fetch the binary
-from this repository's releases.
+There is no install script: the binary carries the slash commands inside it and
+installs itself. Nothing here needs a clone or a Rust toolchain.
 
-**Windows** — double-click `install-codex.bat`, or:
-
-```
-pwsh -NoProfile -File bootstrap.ps1 -AutoSwitch
-```
-
-**macOS and Linux**:
+**Windows** — double-click `install-codex.bat`. It downloads the published
+binary and runs `kebacc-codex install`, passing on whatever it was given:
 
 ```
-curl -fsSL https://github.com/kebab1337420/kebacc-switch/releases/download/kebacc-codex-v0.2.6/bootstrap.sh | sh -s -- --auto-switch
+install-codex.bat -AutoSwitch -StatusLine
 ```
 
-From a clone, with the binary built (`cargo build --release -p kebacc-codex`),
-the plugin installs itself: `install.ps1` on Windows, `install.sh` on macOS and
-Linux. Both take `--force` (`-Force`) to install a rebuild of the version that
-is already there, and `--auto-switch` (`-AutoSwitch`) to arm the switch.
+**macOS and Linux** — download the binary for this platform from the newest
+`kebacc-codex-v*` release and ask it to install itself:
 
-Running either again is how it updates.
+```
+curl -fsSL -o kebacc-codex https://github.com/kebab1337420/kebacc-switch/releases/latest/download/kebacc-codex-x86_64-unknown-linux-gnu
+chmod +x kebacc-codex
+./kebacc-codex install --auto-switch
+```
+
+From a clone it is the same command on the build you just made:
+
+```
+cargo build --release -p kebacc-codex
+target/release/kebacc-codex install --auto-switch
+```
+
+`--auto-switch` (`-AutoSwitch`) arms the switch, `--status-line`
+(`-StatusLine`) points the Claude Code status line here, and `--tools-dir`
+(`-ToolsDir`) installs somewhere other than `~/.claude-tools`. Running it again
+is how it updates.
 
 ## What it does
 
@@ -68,8 +77,8 @@ the same `auto`:
 
 Both hooks run `kebacc-codex` by name, and arming reads and rewrites nothing
 else: the Claude switcher, `kebacc-switch`, arms its own pair under its own
-binary, and the two never touch each other's. That is what the installers and
-uninstallers call:
+binary, and the two never touch each other's. That is what `install` and
+`uninstall` call:
 
 ```
 kebacc-codex arm -Provider codex -Merge   # add this pool to our hook's scope
@@ -82,10 +91,18 @@ it is rearmed.
 
 ## Uninstalling
 
-`uninstall.ps1` on Windows, `uninstall.sh` on macOS and Linux. Either takes the
-Codex commands out, narrows the hooks, and drops this half's version marker. The
-binary, the status line and the shell function stay if another half is still
-installed — whichever leaves last takes them.
+`kebacc-codex uninstall` takes the Codex commands out, narrows the hooks, drops
+this half's version marker and removes the binary. It asks first; `--yes`
+(`-Yes`) answers for you. What the settings name is what it takes back: a second
+install of this half, somewhere else on the machine, keeps its own settings and
+its own slash commands.
+
+The commands that span both pools — `/kebacc-list-all`, `/kebacc-auto-all` —
+go with whichever half leaves last, since they mean nothing on their own.
+
+On Windows a running binary cannot delete itself, so the uninstall leaves a copy
+of itself in the temporary directory and that copy takes the name a moment after
+this process lets go of it.
 
 The saved logins are kept: they are the point of the tool, and removing the
 plugin is not a reason to lose them. `--pool` (`-Pool`) deletes them.
@@ -110,14 +127,20 @@ the pool by anything else is reported rather than used.
 ## Layout
 
 ```
-install.ps1 / uninstall.ps1     put it down, take it back, on Windows
-install.sh / uninstall.sh       the same, on macOS and Linux
-bootstrap.ps1 / bootstrap.sh    install from a release, with no clone
-shared.ps1 / shared.sh          what a switcher has to agree on to share a machine
-src/commands/*.md               the slash commands
+src/commands/*.md         the slash commands this half owns
+src/commands-all/*.md     the pair that only means anything with both halves here
+VERSION                   the number the marker file carries
 ```
 
-`shared.ps1` and `shared.sh` hold the part another switcher on the same machine
-has to answer the same way: the version markers that say who is installed, the
-binary-version guard, and the scope algebra the session hook is widened and
-narrowed by.
+Nothing else: the shell scripts that used to put this down and take it back are
+`kebacc-codex install` and `kebacc-codex uninstall`, in
+`crates/kebacc-codex/src/cmd/`. The command files above are compiled into the
+binary with `include_str!`, so the binary that installs them is the only thing
+that has to arrive on the machine, and a command file that CI finds on disk but
+not in that list fails the build.
+
+What another switcher sharing the machine has to answer the same way lives in
+the same crate: the version markers that say who is installed
+(`.version` for the Claude half, `.codex-version` for this one), the
+binary-version guard, and the scope algebra in `cmd/arm.rs` the session hook is
+widened and narrowed by.

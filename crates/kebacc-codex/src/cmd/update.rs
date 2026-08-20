@@ -353,7 +353,7 @@ fn download(url: &str) -> Result<Vec<u8>, String> {
     Ok(bytes)
 }
 
-fn swap(exe: &Path, fresh: &Path) -> Result<(), String> {
+pub fn swap(exe: &Path, fresh: &Path) -> Result<(), String> {
     let stale = exe.with_extension("old");
     let _ = std::fs::remove_file(&stale);
     if exe.exists() {

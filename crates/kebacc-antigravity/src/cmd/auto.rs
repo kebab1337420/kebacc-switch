@@ -112,7 +112,7 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
             fallback.push((entry, usage));
             continue;
         }
-        return take(provider, entry, usage.as_ref(), &note);
+        return take(provider, entry, usage.as_ref(), opts.spawned, &note);
     }
 
     if blind {
@@ -139,7 +139,7 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
                 Color::Dim,
             );
         }
-        return take(provider, entry, usage.as_ref(), &note);
+        return take(provider, entry, usage.as_ref(), opts.spawned, &note);
     }
 
     match soonest {
@@ -159,6 +159,7 @@ fn take(
     provider: &Provider,
     entry: &crate::pool::Entry,
     usage: Option<&usage::Usage>,
+    spawned: bool,
     note: &dyn Fn(&str, Color),
 ) -> i32 {
     if let Err(problem) = live::activate(provider, entry) {
@@ -168,9 +169,40 @@ fn take(
     let pair = usage
         .map(|u| u.as_pair())
         .unwrap_or_else(|| "usage n/a".into());
-    note(
-        &format!("Switched {} to {} ({pair}).", provider.label, entry.email),
-        Color::Green,
-    );
+    let line = format!("Switched {} to {} ({pair}).", provider.label, entry.email);
+    // A mid-task switch runs detached, with nowhere to print: whoever spawned
+    // it is long gone and the session never hears about it. Leave the line
+    // where the next hook can pick it up. A switch anyone can see the output of
+    // needs no note.
+    if spawned {
+        leave_note(&format!(
+            "{line} This session goes on from here on that one."
+        ));
+    }
+    note(&line, Color::Green);
     10
+}
+
+/// Where a detached switch leaves word of what it did. Read and removed by the
+/// next mid-task hook, which is the first thing after it with a way to reach
+/// the session.
+///
+/// Named for this pool. The state directory is the one the Claude half uses,
+/// and a session with both armed would otherwise have one switch overwrite the
+/// other's note and go out announcing the wrong pool.
+pub fn note_file() -> std::path::PathBuf {
+    crate::provider::state_dir().join("switched-antigravity.note")
+}
+
+fn leave_note(text: &str) {
+    let _ = std::fs::write(note_file(), text);
+}
+
+/// Take the note left by a detached switch, if there is one. Reading it clears
+/// it: the same switch is never announced twice.
+pub fn take_note() -> Option<String> {
+    let text = std::fs::read_to_string(note_file()).ok()?;
+    let _ = std::fs::remove_file(note_file());
+    let text = text.trim().to_string();
+    (!text.is_empty()).then_some(text)
 }

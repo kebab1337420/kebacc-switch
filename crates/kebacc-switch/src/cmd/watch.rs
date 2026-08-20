@@ -47,9 +47,9 @@ fn idle_exit() -> Duration {
 /// process that checks a quota forever is not something to leave behind.
 const MAX_LIFE: Duration = Duration::from_secs(12 * 60 * 60);
 /// How often the wait between two checks looks up to see whether it has been
-/// asked to stop. The check itself is a minute apart; a stop that waited that
-/// long would have an uninstall sitting there for a minute, or killing the
-/// process instead of asking.
+/// asked to stop. The check itself is twenty seconds apart; a stop that waited
+/// for the next one would have an uninstall sitting there that long, or killing
+/// the process instead of asking.
 const POLL: Duration = Duration::from_secs(1);
 
 fn state(name: &str) -> PathBuf {

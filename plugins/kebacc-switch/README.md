@@ -103,9 +103,9 @@ Two flags for a machine that carries the Codex half as well:
 - `PreToolUse`, matching every tool, so an account that runs out *during* a task
   is left behind there and then. Without it a long job sits on a capped account
   until the session ends. This hook does no work of its own: it reads a stamp
-  file, and at most once a minute
-  (`KEBACC_SWITCH_MIDTASK_INTERVAL_MS`) it spawns a detached `auto`, so the tool
-  call it runs in front of is never held up. A tool call that is itself a
+  file, and at most once every twenty seconds
+  (`KEBACC_SWITCH_MIDTASK_INTERVAL_MS`) it spawns a detached `auto`, so the
+  tool call it runs in front of is never held up. A tool call that is itself a
   switcher command is skipped — you asked to look, not to move. Naming the
   switcher is not the same as calling it: a `grep kebacc` or an edit to a file
   under `crates/kebacc-switch/` still arms the check.
@@ -178,7 +178,7 @@ The switching itself has four knobs, all read from the Claude Code settings'
 | --- | --- |
 | `CLAUDE_AUTOSWITCH_THRESHOLD` | the five-hour window's cap, in percent (default 99). Below it an account counts as having room |
 | `CLAUDE_AUTOSWITCH_WEEKLY_THRESHOLD` | the same for the seven-day window (default 99) |
-| `KEBACC_SWITCH_MIDTASK_INTERVAL_MS` | how long between two checks, for the mid-task hook and the watcher alike (default 60000) |
+| `KEBACC_SWITCH_MIDTASK_INTERVAL_MS` | how long between two checks, for the mid-task hook and the watcher alike (default 20000) |
 | `KEBACC_SWITCH_WATCH_IDLE_MS` | how long the watcher waits on a silent session before giving up (default 1800000) |
 
 A quota reading is cached for a minute, except within ten points of a cap: there

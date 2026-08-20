@@ -342,6 +342,18 @@ fn check_settings(report: &mut Report) {
             hook_scope(&midtask[0]).unwrap_or_else(|| provider::PROVIDER_ID.into())
         ));
     }
+
+    // The watcher covers what no hook can: a turn with no tool call in it. It
+    // is started by the hooks and dies with the session, so its absence is
+    // worth a line but never an alarm.
+    if super::watch::on_duty() {
+        report.good(&format!(
+            "a watcher is on duty, checking every {}s even with no tool call",
+            super::watch::interval().as_secs()
+        ));
+    } else {
+        report.good("no watcher running yet. The next hook starts one.");
+    }
 }
 
 pub fn auto_hooks(settings: &Value) -> Vec<String> {

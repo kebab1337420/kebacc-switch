@@ -40,6 +40,7 @@ fn usage_text() {
     println!();
     println!("  list -Countdown   both quota windows of every saved account, with their resets (-Refresh reads them again first)");
     println!("  auto -Midtask     auto from a tool-use hook, at most once every few minutes");
+    println!("  watch             keep checking on a clock of its own, for the stretches with no tool call (the hooks start this)");
     println!("  refresh           read every saved account's quota again, silently (the status line spawns this)");
     println!("  arm -Provider antigravity|off   arm the session-start auto-switch, or turn it off");
     println!("  arm -Provider antigravity -Merge          add this pool to whatever is already armed, rather than replacing it");
@@ -90,6 +91,7 @@ fn dispatch(args: &[String]) -> i32 {
             | "arm"
             | "gitstat"
             | "wire"
+            | "watch"
             | "install"
             | "uninstall"
             | "reap"
@@ -154,6 +156,13 @@ fn dispatch(args: &[String]) -> i32 {
 
     if command == "auto" && options.hook && !options.spawned {
         cmd::update::maybe();
+        // Session start is the other place a session announces itself, and the
+        // one that gets the watcher up before the first tool call.
+        cmd::watch::ensure_running(&wanted);
+    }
+
+    if command == "watch" {
+        return cmd::watch::run(&wanted);
     }
 
     if command == "auto" && options.midtask {

@@ -12,6 +12,7 @@ pub mod statusline;
 pub mod switch;
 pub mod uninstall;
 pub mod update;
+pub mod watch;
 pub mod wire;
 
 use crate::live;

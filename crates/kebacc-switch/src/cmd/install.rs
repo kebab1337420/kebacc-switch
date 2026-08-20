@@ -461,7 +461,10 @@ fn function_line(entry: &Path, profile: &Path) -> String {
         .extension()
         .is_some_and(|kind| kind.eq_ignore_ascii_case("ps1"))
     {
-        format!("function kebacc-switch {{ & \"{}\" @args }}", entry.display())
+        format!(
+            "function kebacc-switch {{ & \"{}\" @args }}",
+            entry.display()
+        )
     } else {
         format!("kebacc-switch() {{ \"{}\" \"$@\"; }}", entry.display())
     }
@@ -547,7 +550,11 @@ mod tests {
         let before = format!(
             "keep me\n{PROFILE_MARKER}\nkebacc-switch() {{ \"/old\" \"$@\"; }}\nkeep me too\n"
         );
-        let after = repoint(&before, Path::new("/new/kebacc-switch"), Path::new(".zshrc"));
+        let after = repoint(
+            &before,
+            Path::new("/new/kebacc-switch"),
+            Path::new(".zshrc"),
+        );
         assert!(after.contains("keep me\n"));
         assert!(after.contains("keep me too"));
         assert!(after.contains("/new/kebacc-switch"));

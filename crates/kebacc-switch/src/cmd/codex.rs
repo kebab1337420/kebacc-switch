@@ -50,19 +50,17 @@ pub fn run(opts: &Options) -> i32 {
     // --depth 1 on one branch: the history is not wanted, and cloning the whole
     // repository to build one crate is a minute nobody asked for.
     say(&format!("Cloning {branch} from {source}"), Color::Dim);
-    let cloned = ran(
-        Command::new("git").args([
-            "clone",
-            "--quiet",
-            "--depth",
-            "1",
-            "--branch",
-            branch,
-            "--",
-            source,
-            &checkout.display().to_string(),
-        ]),
-    );
+    let cloned = ran(Command::new("git").args([
+        "clone",
+        "--quiet",
+        "--depth",
+        "1",
+        "--branch",
+        branch,
+        "--",
+        source,
+        &checkout.display().to_string(),
+    ]));
     if !cloned {
         say(
             &format!("Could not clone the {branch} branch from {source}."),
@@ -78,7 +76,10 @@ pub fn run(opts: &Options) -> i32 {
     let code = build_and_install(opts, &checkout);
 
     if opts.keep_checkout {
-        say(&format!("The checkout is at {}", checkout.display()), Color::Dim);
+        say(
+            &format!("The checkout is at {}", checkout.display()),
+            Color::Dim,
+        );
     } else {
         let _ = std::fs::remove_dir_all(&checkout);
     }
@@ -103,13 +104,16 @@ fn build_and_install(opts: &Options, checkout: &Path) -> i32 {
         return 1;
     }
 
-    let binary = checkout.join("target").join("release").join(format!(
-        "kebacc-codex{}",
-        std::env::consts::EXE_SUFFIX
-    ));
+    let binary = checkout
+        .join("target")
+        .join("release")
+        .join(format!("kebacc-codex{}", std::env::consts::EXE_SUFFIX));
     if !binary.is_file() {
         say(
-            &format!("The build reported success but {} is not there.", binary.display()),
+            &format!(
+                "The build reported success but {} is not there.",
+                binary.display()
+            ),
             Color::Red,
         );
         return 1;

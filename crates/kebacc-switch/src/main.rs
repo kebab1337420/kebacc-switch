@@ -36,7 +36,9 @@ fn usage_text() {
     println!("  statusline  the Claude Code status line, from a payload on stdin");
     println!("  update      install the newest release (-Check to only say whether one is out)");
     println!("  install     put this binary, the slash commands and the hooks in place (-StatusLine, -AutoSwitch, -ToolsDir, -NoProfileEdit)");
-    println!("  uninstall   take all of that back, leaving the saved logins (-Pool removes those too)");
+    println!(
+        "  uninstall   take all of that back, leaving the saved logins (-Pool removes those too)"
+    );
     println!("  install-codex   clone, build and install the Codex half from its own branch");
     println!();
     println!("  list -Countdown   both quota windows of every saved account, with their resets (-Refresh reads them again first)");
@@ -222,7 +224,10 @@ fn parse(tokens: &[String]) -> Result<(String, Options), String> {
         // `-ToolsDir` and `--tools-dir` are the same option: the two installers
         // this replaced took the Windows spelling and the POSIX one, and the
         // instructions people have already been given use both.
-        let name = name.trim_start_matches('-').replace(['-', '_'], "").to_lowercase();
+        let name = name
+            .trim_start_matches('-')
+            .replace(['-', '_'], "")
+            .to_lowercase();
         let mut value = || {
             let next = tokens.get(index).filter(|t| !t.starts_with('-'));
             if next.is_some() {
@@ -252,9 +257,7 @@ fn parse(tokens: &[String]) -> Result<(String, Options), String> {
             "spawned" => options.spawned = true,
             "statusline" => options.statusline = Some(true),
             "nostatusline" => options.statusline = Some(false),
-            "toolsdir" => {
-                options.tools_dir = Some(value().ok_or("-ToolsDir needs a directory.")?)
-            }
+            "toolsdir" => options.tools_dir = Some(value().ok_or("-ToolsDir needs a directory.")?),
             "binary" => options.binary = Some(value().ok_or("-Binary needs a path.")?),
             // `-AutoSwitch claude` is accepted so the words the old installers
             // took still work; claude is the only pool this plugin has.

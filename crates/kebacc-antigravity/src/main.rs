@@ -39,7 +39,7 @@ fn usage_text() {
     println!("  uninstall   take all of that back (-Pool also deletes the saved logins)");
     println!();
     println!("  list -Countdown   both quota windows of every saved account, with their resets (-Refresh reads them again first)");
-    println!("  auto -Midtask     auto from a tool-use hook, at most once every few minutes");
+    println!("  auto -Midtask     auto from a tool-use hook, at most once an interval");
     println!("  watch             keep checking on a clock of its own, for the stretches with no tool call (the hooks start this)");
     println!("  refresh           read every saved account's quota again, silently (the status line spawns this)");
     println!("  arm -Provider antigravity|off   arm the session-start auto-switch, or turn it off");

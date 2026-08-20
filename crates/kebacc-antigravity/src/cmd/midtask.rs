@@ -4,10 +4,11 @@ use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 /// How often the mid-task hook is allowed to look. Five minutes used to be
-/// the figure, which is five minutes of requests going to an account that
-/// may already be refusing them. A minute costs almost nothing: away from
-/// the cap the check reads the cached usage and never leaves the machine.
-const DEFAULT_INTERVAL_MS: u128 = 60 * 1000;
+/// the figure, then a minute, and both are long enough for a run of turns
+/// to keep going to an account that is already refusing them. Twenty
+/// seconds costs almost nothing: away from the cap the check reads the
+/// cached usage and never leaves the machine.
+const DEFAULT_INTERVAL_MS: u128 = 20 * 1000;
 
 pub fn run(provider: &str) -> i32 {
     // Word of the last detached switch, if one happened since we last ran.

@@ -77,7 +77,7 @@ the same `auto`:
 - `PreToolUse`, matching every tool, so an account that runs out *during* a task
   is switched off partway through it rather than at the next session. That one
   reads a stamp file and does nothing at all unless the last check was more than
-  five minutes ago (`KEBACC_SWITCH_MIDTASK_INTERVAL_MS`).
+  twenty seconds ago (`KEBACC_SWITCH_MIDTASK_INTERVAL_MS`).
 
 Both hooks run `kebacc-codex` by name, and arming reads and rewrites nothing
 else: the Claude switcher, `kebacc-switch`, arms its own pair under its own

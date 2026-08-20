@@ -13,6 +13,11 @@ rem Invoke-RestMethod writes a JSON array as one object rather than as a stream
 rem of them, so the answer is assigned before it is filtered. Filtering it inline
 rem matches nothing once the repository has more than one release.
 rem
+rem The tag prefix, not "the newest release that is not a pre-release": the same
+rem repository publishes the Codex half under kebacc-codex-v tags, and one of
+rem those going out last would otherwise be the release this reaches into for a
+rem file that is not on it.
+rem
 rem Arguments are passed through to the installer by name, so this works:
 rem
 rem   install.bat -StatusLine -AutoSwitch all
@@ -35,7 +40,7 @@ set "PS=powershell"
 where pwsh >nul 2>&1 && set "PS=pwsh"
 
 echo Fetching kebacc-switch...
-"%PS%" -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; try{[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12}catch{}; $h=@{'User-Agent'='kebacc-switch-installer'}; if($env:GITHUB_TOKEN){$h['Authorization']='Bearer '+$env:GITHUB_TOKEN}; $answer=Invoke-RestMethod ('https://api.github.com/repos/'+$env:REPO+'/releases') -Headers $h; $r=@(@($answer) | Where-Object {-not $_.draft -and -not $_.prerelease}) | Select-Object -First 1; if(-not $r){throw 'No release has been published yet.'}; $a=@(@($r.assets) | Where-Object {$_.name -eq $env:ASSET}) | Select-Object -First 1; if(-not $a){throw ($r.tag_name+' has no '+$env:ASSET+' attached to it.')}; $d=$h.Clone(); $d['Accept']='application/octet-stream'; Invoke-WebRequest $a.url -OutFile $env:EXE -Headers $d"
+"%PS%" -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; try{[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12}catch{}; $h=@{'User-Agent'='kebacc-switch-installer'}; if($env:GITHUB_TOKEN){$h['Authorization']='Bearer '+$env:GITHUB_TOKEN}; $answer=Invoke-RestMethod ('https://api.github.com/repos/'+$env:REPO+'/releases') -Headers $h; $r=@(@($answer) | Where-Object {-not $_.draft -and -not $_.prerelease -and $_.tag_name -like 'kebacc-switch-v*'}) | Select-Object -First 1; if(-not $r){throw 'No kebacc-switch-v* release has been published yet.'}; $a=@(@($r.assets) | Where-Object {$_.name -eq $env:ASSET}) | Select-Object -First 1; if(-not $a){throw ($r.tag_name+' has no '+$env:ASSET+' attached to it.')}; $d=$h.Clone(); $d['Accept']='application/octet-stream'; Invoke-WebRequest $a.url -OutFile $env:EXE -Headers $d"
 if errorlevel 1 goto failed
 
 echo Saved to %EXE%

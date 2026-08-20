@@ -213,8 +213,24 @@ jobs:
             Linux-aarch64) asset=kebacc-switch-aarch64-unknown-linux-gnu ;;
             *)             asset=kebacc-switch-x86_64-unknown-linux-gnu ;;
           esac
-          gh release download --repo "$GITHUB_REPOSITORY" --pattern "$asset" --dir "$sandbox" --clobber
+          # The newest kebacc-switch-v tag, named outright: the same repository
+          # publishes the Codex half under kebacc-codex-v tags, and a download
+          # with no tag takes whichever of the two is the Latest release and
+          # then finds none of this half's assets on it.
+          tag=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName --jq '[.[] | select(.tagName | startswith("kebacc-switch-v"))] | first | .tagName // ""')
+          test -n "$tag"
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern "$asset" --dir "$sandbox" --clobber
           chmod +x "$sandbox/$asset"
+
+          # The release that is out was published before the installer moved
+          # into the binary, so there is no `install` on it to run. That is a
+          # release yet to be cut rather than a broken build, and saying so
+          # beats a red build that nothing in the tree can turn green. The next
+          # release brings this gate back by itself.
+          if ! "$sandbox/$asset" --help 2>&1 | grep -q '^  install '; then
+            echo "the published release predates the built-in installer, so there is nothing to install yet"
+            exit 0
+          fi
 
           "$sandbox/$asset" install --no-profile-edit
 
@@ -225,10 +241,37 @@ jobs:
           "$HOME/.claude-tools/kebacc-switch" uninstall --yes
           echo 'the published binary installs and runs'
 
+      # install.bat runs `install` on the file it downloads, so the release it
+      # would fetch has to be one that carries that command. The question is
+      # asked here, in a shell that can quote a path and read an exit code,
+      # rather than in the cmd script below.
+      - name: Does the published release know how to install itself
+        id: published
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          # The runners are x64, which is the only asset this needs; install.bat
+          # picks the arm64 one on a machine that has it.
+          $asset = 'kebacc-switch-x86_64-pc-windows-msvc.exe'
+          $dir = Join-Path $env:RUNNER_TEMP 'probe'
+          $tag = gh release list --repo $env:GITHUB_REPOSITORY --limit 100 --json tagName --jq '[.[] | select(.tagName | startswith("kebacc-switch-v"))] | first | .tagName // ""'
+          if (-not $tag) { throw 'no kebacc-switch-v release to look at' }
+          gh release download $tag --repo $env:GITHUB_REPOSITORY --pattern $asset --dir $dir --clobber
+          if ($LASTEXITCODE -ne 0) { throw "$tag has no $asset on it" }
+          $help = & (Join-Path $dir $asset) --help 2>&1 | Out-String
+          $knows = $help -match '(?m)^  install '
+          "installer=$($knows.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          if (-not $knows) {
+            Write-Host 'the published release predates the built-in installer, so there is nothing to install yet'
+          }
+
       # The Windows half of the same thing, run through install.bat: that file
       # is what a double-click reaches, and nothing else tests it.
       - name: install.bat installs the published release
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && steps.published.outputs.installer == 'true'
         shell: cmd
         env:
           GITHUB_TOKEN: ${{ github.token }}

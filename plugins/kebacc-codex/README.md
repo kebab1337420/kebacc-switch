@@ -21,11 +21,15 @@ install-codex.bat -AutoSwitch -StatusLine
 ```
 
 **macOS and Linux** — download the binary for this platform from the newest
-`kebacc-codex-v*` release and ask it to install itself:
+`kebacc-codex-v*` release and ask it to install itself. The asset is picked by
+name off the release list rather than through `releases/latest`, which points
+at the Claude half:
 
 ```
-curl -fsSL -o kebacc-codex https://github.com/kebab1337420/kebacc-switch/releases/latest/download/kebacc-codex-x86_64-unknown-linux-gnu
-chmod +x kebacc-codex
+name=kebacc-codex-x86_64-unknown-linux-gnu
+url=$(curl -fsSL https://api.github.com/repos/kebab1337420/kebacc-switch/releases |
+  grep -o "https://[^\"]*/$name" | head -n 1)
+curl -fsSL "$url" -o kebacc-codex && chmod +x kebacc-codex
 ./kebacc-codex install --auto-switch
 ```
 

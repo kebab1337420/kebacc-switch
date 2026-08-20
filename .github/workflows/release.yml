@@ -6,7 +6,7 @@ name: release
 # finds its own file.
 on:
   push:
-    tags: ["kebacc-switch-v*"]
+    tags: ["kebacc-antigravity-v*"]
   workflow_dispatch:
     inputs:
       tag:
@@ -76,7 +76,7 @@ jobs:
 
       - name: Test
         if: '!matrix.cross'
-        run: cargo test --release --target ${{ matrix.target }} -p kebacc-switch
+        run: cargo test --release --target ${{ matrix.target }} -p kebacc-antigravity
 
       # The paths of the machine that built it have no business being in a
       # published binary.
@@ -84,21 +84,21 @@ jobs:
         shell: bash
         run: |
           export CARGO_ENCODED_RUSTFLAGS="--remap-path-prefix=$PWD=."
-          cargo build --release --target ${{ matrix.target }} -p kebacc-switch
+          cargo build --release --target ${{ matrix.target }} -p kebacc-antigravity
 
       - name: Name it after its platform
         shell: bash
         run: |
           mkdir -p dist
           if [ "${{ runner.os }}" = "Windows" ]; then
-            cp "target/${{ matrix.target }}/release/kebacc-switch.exe" "dist/kebacc-switch-${{ matrix.target }}.exe"
+            cp "target/${{ matrix.target }}/release/kebacc-antigravity.exe" "dist/kebacc-antigravity-${{ matrix.target }}.exe"
           else
-            cp "target/${{ matrix.target }}/release/kebacc-switch" "dist/kebacc-switch-${{ matrix.target }}"
+            cp "target/${{ matrix.target }}/release/kebacc-antigravity" "dist/kebacc-antigravity-${{ matrix.target }}"
           fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: kebacc-switch-${{ matrix.target }}
+          name: kebacc-antigravity-${{ matrix.target }}
           path: dist/*
           if-no-files-found: error
 
@@ -117,7 +117,7 @@ jobs:
           path: dist
           merge-multiple: true
 
-      # install.bat is published beside the binaries so a Windows machine with
+      # install-antigravity.bat is published beside the binaries so a Windows machine with
       # neither a clone nor a toolchain can start from one file. The other
       # platforms need no script of their own: the binary is the installer, and
       # the README carries the one line that downloads it.
@@ -126,7 +126,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          cp install.bat dist/
+          cp install-antigravity.bat dist/
           ls -l dist
           # The release is held as a draft until its binaries are on it. A
           # release page that exists with nothing to download is not much use
@@ -137,7 +137,7 @@ jobs:
           gh release upload "$TAG" dist/* --clobber
           # Published last, in one step, with everything already attached. This
           # leaves the notes alone, whoever wrote them, and the release goes out
-          # as a full one: install.bat and the README line both reach for the
+          # as a full one: install-antigravity.bat and the README line both reach for the
           # newest release that is not a pre-release, so a release flagged as
           # one is a release nobody can install without knowing its tag.
           gh release edit "$TAG" --draft=false

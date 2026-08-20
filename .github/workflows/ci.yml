@@ -30,18 +30,18 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Build
-        run: cargo build --release -p kebacc-switch
+        run: cargo build --release -p kebacc-antigravity
 
       - name: Test
-        run: cargo test --release -p kebacc-switch
+        run: cargo test --release -p kebacc-antigravity
 
       - name: Clippy
-        run: cargo clippy --release --all-targets -p kebacc-switch -- -D warnings
+        run: cargo clippy --release --all-targets -p kebacc-antigravity -- -D warnings
 
       # A binary that will not start says so here rather than on a user's
       # machine after the release is out.
       - name: It runs
-        run: cargo run --release -p kebacc-switch -- --version
+        run: cargo run --release -p kebacc-antigravity -- --version
 
       # The version a plugin stamps into its marker file, the version the binary
       # reports, and the version cargo built are three copies of one number. A
@@ -51,10 +51,10 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           set -eu
-          crate=$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' crates/kebacc-switch/Cargo.toml | head -n 1)
-          marked=$(tr -d ' \t\r\n' < plugins/kebacc-switch/VERSION)
+          crate=$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' crates/kebacc-antigravity/Cargo.toml | head -n 1)
+          marked=$(tr -d ' \t\r\n' < plugins/kebacc-antigravity/VERSION)
           test "$marked" = "$crate" || {
-            echo "plugins/kebacc-switch/VERSION is $marked, the crate is $crate" >&2
+            echo "plugins/kebacc-antigravity/VERSION is $marked, the crate is $crate" >&2
             exit 1
           }
           echo "every VERSION says $crate"
@@ -72,21 +72,21 @@ jobs:
           bad=0
           # The include_str! paths, not every quoted name in the file: the
           # tests name commands this plugin deliberately does not carry.
-          carried=$(grep -o 'commands/kebacc-[^"]*\.md' crates/kebacc-switch/src/cmd/install.rs |
+          carried=$(grep -o 'commands/kebacc-[^"]*\.md' crates/kebacc-antigravity/src/cmd/install.rs |
             sed 's|.*/||' | sort -u)
-          for file in plugins/kebacc-switch/src/commands/*.md; do
+          for file in plugins/kebacc-antigravity/src/commands/*.md; do
             name=${file##*/}
             echo "$carried" | grep -qx "$name" ||
               { echo "$name is on disk but not carried by the binary" >&2; bad=1; }
           done
           for name in $carried; do
-            [ -f "plugins/kebacc-switch/src/commands/$name" ] ||
+            [ -f "plugins/kebacc-antigravity/src/commands/$name" ] ||
               { echo "$name is carried by the binary but not on disk" >&2; bad=1; }
           done
           test "$bad" = 0
-          echo "$(ls plugins/kebacc-switch/src/commands/*.md | wc -l | tr -d ' ') commands, all carried"
+          echo "$(ls plugins/kebacc-antigravity/src/commands/*.md | wc -l | tr -d ' ') commands, all carried"
 
-      # There is no install script any more: `kebacc-switch install` is the
+      # There is no install script any more: `kebacc-antigravity install` is the
       # installer, and it carries the slash commands inside it. What used to be
       # install.sh and install.ps1 is this one code path, run here for real on
       # every platform, against directories made for the occasion.
@@ -97,15 +97,15 @@ jobs:
           sandbox=$(mktemp -d)
           export HOME="$sandbox/home"
           export CLAUDE_CONFIG_DIR="$sandbox/claude"
-          export KEBACC_SWITCH_ACCOUNTS="$sandbox/accounts"
+          export KEBACC_SWITCH_ANTIGRAVITY_ACCOUNTS="$sandbox/accounts"
           mkdir -p "$HOME" "$CLAUDE_CONFIG_DIR"
           echo '{"model":"opus"}' > "$CLAUDE_CONFIG_DIR/settings.json"
 
-          target/release/kebacc-switch install --status-line --auto-switch claude
+          target/release/kebacc-antigravity install --status-line --auto-switch antigravity
 
-          test -x "$HOME/.claude-tools/kebacc-switch"
-          test "$(cat "$HOME/.claude-tools/.version")" = "$(cat plugins/kebacc-switch/VERSION)"
-          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-claude.md"
+          test -x "$HOME/.claude-tools/kebacc-antigravity"
+          test "$(cat "$HOME/.claude-tools/.antigravity-version")" = "$(cat plugins/kebacc-antigravity/VERSION)"
+          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-antigravity.md"
           grep -q '"model": *"opus"' "$CLAUDE_CONFIG_DIR/settings.json"
           grep -q 'statusLine' "$CLAUDE_CONFIG_DIR/settings.json"
           grep -q 'SessionStart' "$CLAUDE_CONFIG_DIR/settings.json"
@@ -114,18 +114,18 @@ jobs:
           grep -q 'PreToolUse' "$CLAUDE_CONFIG_DIR/settings.json"
           grep -q -- '-Midtask' "$CLAUDE_CONFIG_DIR/settings.json"
           cat "$HOME"/.zshrc "$HOME"/.bashrc "$HOME"/.profile 2>/dev/null |
-            grep -q 'kebacc-switch account switcher'
-          "$HOME/.claude-tools/kebacc-switch" doctor > /dev/null
+            grep -q 'kebacc-antigravity account switcher'
+          "$HOME/.claude-tools/kebacc-antigravity" doctor > /dev/null
 
           # --yes: the uninstall asks before taking anything, and there is no
           # terminal here to answer it from. It is run from the installed copy,
           # which is how somebody actually reaches it.
-          "$HOME/.claude-tools/kebacc-switch" uninstall --yes
+          "$HOME/.claude-tools/kebacc-antigravity" uninstall --yes
 
-          test ! -e "$HOME/.claude-tools/kebacc-switch"
-          # Every command that was installed, not just the easy ones: the sweep
-          # skips `*codex*`, and this plugin ships one such name of its own.
-          for file in plugins/kebacc-switch/src/commands/*.md; do
+          test ! -e "$HOME/.claude-tools/kebacc-antigravity"
+          # Every command that was installed, not just the easy ones: the
+          # sweep leaves the other halves' names where they are.
+          for file in plugins/kebacc-antigravity/src/commands/*.md; do
             test ! -e "$CLAUDE_CONFIG_DIR/commands/${file##*/}" || {
               echo "the uninstall left ${file##*/} behind" >&2
               exit 1
@@ -136,7 +136,7 @@ jobs:
           ! grep -q 'SessionStart' "$CLAUDE_CONFIG_DIR/settings.json"
           ! grep -q 'PreToolUse' "$CLAUDE_CONFIG_DIR/settings.json"
           ! cat "$HOME"/.zshrc "$HOME"/.bashrc "$HOME"/.profile 2>/dev/null |
-            grep -q 'kebacc-switch account switcher'
+            grep -q 'kebacc-antigravity account switcher'
           echo 'installed and uninstalled cleanly'
 
       # The same on Windows, where deleting a running binary is not allowed:
@@ -151,14 +151,14 @@ jobs:
           $sandbox = Join-Path $env:RUNNER_TEMP ('install-' + [guid]::NewGuid().ToString('N'))
           $tools = Join-Path $sandbox 'tools'
           $env:CLAUDE_CONFIG_DIR = Join-Path $sandbox 'claude'
-          $env:KEBACC_SWITCH_ACCOUNTS = Join-Path $sandbox 'accounts'
+          $env:KEBACC_SWITCH_ANTIGRAVITY_ACCOUNTS = Join-Path $sandbox 'accounts'
           New-Item -ItemType Directory -Path $env:CLAUDE_CONFIG_DIR -Force | Out-Null
           $settingsPath = Join-Path $env:CLAUDE_CONFIG_DIR 'settings.json'
           # A status line somebody else holds: ours displaces it on the way in
           # and has to hand it back on the way out.
           '{"model":"opus","statusLine":{"type":"command","command":"starship prompt"}}' | Set-Content -LiteralPath $settingsPath
 
-          target/release/kebacc-switch.exe install -ToolsDir $tools -StatusLine -AutoSwitch claude -NoProfileEdit
+          target/release/kebacc-antigravity.exe install -ToolsDir $tools -StatusLine -AutoSwitch antigravity -NoProfileEdit
           if ($LASTEXITCODE -ne 0) { throw "install exited $LASTEXITCODE" }
 
           $settings = Get-Content -LiteralPath $settingsPath -Raw
@@ -167,14 +167,14 @@ jobs:
             if ($settings -notmatch [regex]::Escape($needle)) { throw "settings.json is missing $needle" }
           }
 
-          $exe = Join-Path $tools 'kebacc-switch.exe'
+          $exe = Join-Path $tools 'kebacc-antigravity.exe'
           & $exe uninstall -ToolsDir $tools -NoProfileEdit -Yes
           if ($LASTEXITCODE -ne 0) { throw "uninstall exited $LASTEXITCODE" }
 
           $settings = Get-Content -LiteralPath $settingsPath -Raw
           # Neither hook may outlive the binary they point at, and nothing of
           # ours may be left in the status line either.
-          foreach ($needle in 'kebacc-switch', 'SessionStart', 'PreToolUse') {
+          foreach ($needle in 'kebacc-antigravity', 'SessionStart', 'PreToolUse') {
             if ($settings -match [regex]::Escape($needle)) { throw "the uninstall left $needle behind" }
           }
           # The copy left behind waits for this process to let go of the name,
@@ -202,23 +202,29 @@ jobs:
           sandbox=$(mktemp -d)
           export HOME="$sandbox/home"
           export CLAUDE_CONFIG_DIR="$sandbox/claude"
-          export KEBACC_SWITCH_ACCOUNTS="$sandbox/accounts"
+          export KEBACC_SWITCH_ANTIGRAVITY_ACCOUNTS="$sandbox/accounts"
           mkdir -p "$HOME" "$CLAUDE_CONFIG_DIR"
 
           # The same names cmd/update.rs asks for, so this downloads the file a
           # machine updating itself would have downloaded.
           case "$(uname -s)-$(uname -m)" in
-            Darwin-arm64)  asset=kebacc-switch-aarch64-apple-darwin ;;
-            Darwin-x86_64) asset=kebacc-switch-x86_64-apple-darwin ;;
-            Linux-aarch64) asset=kebacc-switch-aarch64-unknown-linux-gnu ;;
-            *)             asset=kebacc-switch-x86_64-unknown-linux-gnu ;;
+            Darwin-arm64)  asset=kebacc-antigravity-aarch64-apple-darwin ;;
+            Darwin-x86_64) asset=kebacc-antigravity-x86_64-apple-darwin ;;
+            Linux-aarch64) asset=kebacc-antigravity-aarch64-unknown-linux-gnu ;;
+            *)             asset=kebacc-antigravity-x86_64-unknown-linux-gnu ;;
           esac
-          # The newest kebacc-switch-v tag, named outright: the same repository
-          # publishes the Codex half under kebacc-codex-v tags, and a download
+          # The newest kebacc-antigravity-v tag, named outright: the same repository
+          # publishes the other halves under tags of their own, and a download
           # with no tag takes whichever of the two is the Latest release and
           # then finds none of this half's assets on it.
-          tag=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName --jq '[.[] | select(.tagName | startswith("kebacc-switch-v"))] | first | .tagName // ""')
-          test -n "$tag"
+          tag=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName --jq '[.[] | select(.tagName | startswith("kebacc-antigravity-v"))] | first | .tagName // ""')
+          # This half has yet to be released, so there is nothing published to
+          # install here. The first kebacc-antigravity-v tag turns this gate
+          # back on by itself.
+          if [ -z "$tag" ]; then
+            echo "no kebacc-antigravity-v release yet, so there is nothing to install"
+            exit 0
+          fi
           gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern "$asset" --dir "$sandbox" --clobber
           chmod +x "$sandbox/$asset"
 
@@ -234,14 +240,14 @@ jobs:
 
           "$sandbox/$asset" install --no-profile-edit
 
-          test -x "$HOME/.claude-tools/kebacc-switch"
-          "$HOME/.claude-tools/kebacc-switch" --version
-          "$HOME/.claude-tools/kebacc-switch" doctor > /dev/null
-          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-claude.md"
-          "$HOME/.claude-tools/kebacc-switch" uninstall --yes
+          test -x "$HOME/.claude-tools/kebacc-antigravity"
+          "$HOME/.claude-tools/kebacc-antigravity" --version
+          "$HOME/.claude-tools/kebacc-antigravity" doctor > /dev/null
+          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-antigravity.md"
+          "$HOME/.claude-tools/kebacc-antigravity" uninstall --yes
           echo 'the published binary installs and runs'
 
-      # install.bat runs `install` on the file it downloads, so the release it
+      # install-antigravity.bat runs `install` on the file it downloads, so the release it
       # would fetch has to be one that carries that command. The question is
       # asked here, in a shell that can quote a path and read an exit code,
       # rather than in the cmd script below.
@@ -253,12 +259,16 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          # The runners are x64, which is the only asset this needs; install.bat
+          # The runners are x64, which is the only asset this needs; install-antigravity.bat
           # picks the arm64 one on a machine that has it.
-          $asset = 'kebacc-switch-x86_64-pc-windows-msvc.exe'
+          $asset = 'kebacc-antigravity-x86_64-pc-windows-msvc.exe'
           $dir = Join-Path $env:RUNNER_TEMP 'probe'
-          $tag = gh release list --repo $env:GITHUB_REPOSITORY --limit 100 --json tagName --jq '[.[] | select(.tagName | startswith("kebacc-switch-v"))] | first | .tagName // ""'
-          if (-not $tag) { throw 'no kebacc-switch-v release to look at' }
+          $tag = gh release list --repo $env:GITHUB_REPOSITORY --limit 100 --json tagName --jq '[.[] | select(.tagName | startswith("kebacc-antigravity-v"))] | first | .tagName // ""'
+          if (-not $tag) {
+            Write-Host 'no kebacc-antigravity-v release yet, so there is nothing to install'
+            "installer=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+            exit 0
+          }
           gh release download $tag --repo $env:GITHUB_REPOSITORY --pattern $asset --dir $dir --clobber
           if ($LASTEXITCODE -ne 0) { throw "$tag has no $asset on it" }
           $help = & (Join-Path $dir $asset) --help 2>&1 | Out-String
@@ -268,9 +278,9 @@ jobs:
             Write-Host 'the published release predates the built-in installer, so there is nothing to install yet'
           }
 
-      # The Windows half of the same thing, run through install.bat: that file
+      # The Windows half of the same thing, run through install-antigravity.bat: that file
       # is what a double-click reaches, and nothing else tests it.
-      - name: install.bat installs the published release
+      - name: install-antigravity.bat installs the published release
         if: runner.os == 'Windows' && steps.published.outputs.installer == 'true'
         shell: cmd
         env:
@@ -279,12 +289,12 @@ jobs:
           KEBACC_NO_PAUSE: "1"
         run: |
           set "CLAUDE_CONFIG_DIR=%RUNNER_TEMP%\bat-claude"
-          set "KEBACC_SWITCH_ACCOUNTS=%RUNNER_TEMP%\bat-accounts"
+          set "KEBACC_SWITCH_ANTIGRAVITY_ACCOUNTS=%RUNNER_TEMP%\bat-accounts"
           set "TOOLS=%RUNNER_TEMP%\bat-tools"
           mkdir "%CLAUDE_CONFIG_DIR%"
-          call install.bat -ToolsDir "%TOOLS%" -NoProfileEdit || exit /b 1
-          "%TOOLS%\kebacc-switch.exe" --version || exit /b 1
-          "%TOOLS%\kebacc-switch.exe" doctor >nul || exit /b 1
-          if not exist "%CLAUDE_CONFIG_DIR%\commands\kebacc-list-claude.md" exit /b 1
-          "%TOOLS%\kebacc-switch.exe" uninstall -ToolsDir "%TOOLS%" -NoProfileEdit -Yes || exit /b 1
+          call install-antigravity.bat -ToolsDir "%TOOLS%" -NoProfileEdit || exit /b 1
+          "%TOOLS%\kebacc-antigravity.exe" --version || exit /b 1
+          "%TOOLS%\kebacc-antigravity.exe" doctor >nul || exit /b 1
+          if not exist "%CLAUDE_CONFIG_DIR%\commands\kebacc-list-antigravity.md" exit /b 1
+          "%TOOLS%\kebacc-antigravity.exe" uninstall -ToolsDir "%TOOLS%" -NoProfileEdit -Yes || exit /b 1
           echo the published binary installs and runs

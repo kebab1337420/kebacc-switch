@@ -176,8 +176,8 @@ The switching itself has four knobs, all read from the Claude Code settings'
 
 | Variable | What |
 | --- | --- |
-| `CLAUDE_AUTOSWITCH_THRESHOLD` | the five-hour window's cap, in percent (default 99). Below it an account counts as having room |
-| `CLAUDE_AUTOSWITCH_WEEKLY_THRESHOLD` | the same for the seven-day window (default 99) |
+| `CLAUDE_AUTOSWITCH_THRESHOLD` | the five-hour window's cap, in percent (default 98). Below it an account counts as having room |
+| `CLAUDE_AUTOSWITCH_WEEKLY_THRESHOLD` | the same for the seven-day window (default 98) |
 | `KEBACC_SWITCH_MIDTASK_INTERVAL_MS` | how long between two checks, for the mid-task hook and the watcher alike (default 20000) |
 | `KEBACC_SWITCH_WATCH_IDLE_MS` | how long the watcher waits on a silent session before giving up (default 1800000) |
 
@@ -187,10 +187,16 @@ be wrong in a way that matters, and near it that same minute is the difference
 between switching in time and spending a turn on an account that is already
 refusing.
 
-Leaving the thresholds at 99 means the switch happens once the account is
-practically empty, so a request or two can still land on it before the next
-check. Dropping them a few points — 97, say — buys the margin back: the switch
-lands while there is still quota to spend.
+The default of 98 leaves two points of margin, so the switch lands while there
+is still quota for the turn in flight rather than once the account is already
+refusing. Raising them towards 99 spends more of each account and risks a
+request or two landing after the quota is gone; dropping them further — 95, say
+— widens the margin at the cost of leaving quota unused.
+
+Crossing the threshold is not a reason to stop working. The switch is what
+answers it: the session is told which account it moved to and goes on from
+there, and when no account has room the note says so and the next check moves as
+soon as one does.
 
 One saved login is one `.json` file. The dotfiles beside them are the pool's own
 bookkeeping.

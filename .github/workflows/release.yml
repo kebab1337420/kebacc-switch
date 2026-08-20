@@ -117,15 +117,14 @@ jobs:
           path: dist
           merge-multiple: true
 
-      # The installers are published beside the binaries so a machine with
-      # neither a clone nor a toolchain can start from one file.
+      # The double-click installer is published beside the binaries so a
+      # machine with neither a clone nor a toolchain can start from one file.
       - name: Attach everything to the release
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          cp plugins/kebacc-antigravity/bootstrap.ps1 plugins/kebacc-antigravity/bootstrap.sh \
-             install-antigravity.bat dist/
+          cp install-antigravity.bat dist/
           ls -l dist
           # The release is held as a draft until its binaries are on it. A
           # release page that exists with nothing to download is not much use

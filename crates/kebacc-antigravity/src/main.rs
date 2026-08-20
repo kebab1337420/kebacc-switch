@@ -35,6 +35,8 @@ fn usage_text() {
     println!("  doctor      check the install and the pool (-Protect, -Adopt, -Clean to repair, -Rollback to undo a switch)");
     println!("  statusline  the Claude Code status line, from a payload on stdin");
     println!("  update      install the newest release (-Check to only say whether one is out)");
+    println!("  install     put this binary, its slash commands and its settings in place");
+    println!("  uninstall   take all of that back (-Pool also deletes the saved logins)");
     println!();
     println!("  list -Countdown   both quota windows of every saved account, with their resets (-Refresh reads them again first)");
     println!("  auto -Midtask     auto from a tool-use hook, at most once every few minutes");
@@ -44,6 +46,10 @@ fn usage_text() {
     println!(
         "  arm -Provider antigravity -Drop           take this pool out, leaving anything else armed"
     );
+    println!();
+    println!("  install -StatusLine        also point the Claude Code status line at the switcher");
+    println!("  install -AutoSwitch        also run auto at session start and during a task");
+    println!("  install -ToolsDir <dir>    install somewhere other than ~/.claude-tools");
     println!();
     println!("  Updates install themselves once a day at session start. KEBACC_SWITCH_UPDATE=off stops that.");
 }
@@ -84,6 +90,9 @@ fn dispatch(args: &[String]) -> i32 {
             | "arm"
             | "gitstat"
             | "wire"
+            | "install"
+            | "uninstall"
+            | "reap"
     ) {
         say(&format!("Unknown command '{command}'."), Color::Red);
         usage_text();
@@ -111,6 +120,15 @@ fn dispatch(args: &[String]) -> i32 {
 
     if command == "wire" {
         return cmd::wire::run(options.statusline, options.updates, options.quiet);
+    }
+
+    match command {
+        "install" => return cmd::install::run(&options),
+        "uninstall" => return cmd::uninstall::run(&options),
+        // Not in the help: it is the copy an uninstall leaves behind, waiting
+        // for the name of a binary that cannot delete itself on Windows.
+        "reap" => return cmd::uninstall::reap(&options),
+        _ => {}
     }
 
     if command == "arm" {
@@ -186,7 +204,10 @@ fn parse(tokens: &[String]) -> Result<(String, Options), String> {
                 "Unexpected argument '{token}'. Options are named: -Email you@example.com"
             ));
         };
-        let name = name.trim_start_matches('-').to_lowercase();
+        let name = name
+            .trim_start_matches('-')
+            .replace(['-', '_'], "")
+            .to_lowercase();
         let mut value = || {
             let next = tokens.get(index).filter(|t| !t.starts_with('-'));
             if next.is_some() {
@@ -218,6 +239,13 @@ fn parse(tokens: &[String]) -> Result<(String, Options), String> {
             "nostatusline" => options.statusline = Some(false),
             "autoupdate" => options.updates = Some(true),
             "noautoupdate" => options.updates = Some(false),
+            "toolsdir" => options.tools_dir = Some(value().ok_or("-ToolsDir needs a path.")?),
+            "binary" => options.binary = Some(value().ok_or("-Binary needs a path.")?),
+            // A switch here, where the Claude half takes a pool name: this
+            // binary carries one pool, and it is the only one it could arm.
+            "autoswitch" => options.auto_switch = true,
+            "noprofileedit" => options.no_profile_edit = true,
+            "pool" => options.pool = true,
             other => return Err(format!("Unknown option '-{other}'.")),
         }
     }

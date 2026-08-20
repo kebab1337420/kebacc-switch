@@ -2,7 +2,8 @@ name: ci
 
 # The project is written on Windows, so this is what says whether it still
 # builds anywhere else. Every push runs the tests on the three platforms it
-# claims to support, and lints the scripts each of them installs with.
+# claims to support, and installs the binary on each of them the way a user
+# would.
 on:
   push:
     branches: ["**"]
@@ -42,14 +43,6 @@ jobs:
       - name: It runs
         run: cargo run --release -p kebacc-antigravity -- --version
 
-      - name: The shell scripts parse
-        if: runner.os != 'Windows'
-        run: |
-          for script in plugins/*/*.sh; do
-            sh -n "$script"
-            echo "$script ok"
-          done
-
       # The version a plugin stamps into its marker file, the version the binary
       # reports, and the version cargo built are three copies of one number. A
       # release where they disagree installs a binary that then thinks it is out
@@ -66,29 +59,40 @@ jobs:
           }
           echo "every VERSION says $crate"
 
-      # The installer removes its own commands by name before copying, so a name
-      # in src/commands that is not on the list is never swept — it lingers
-      # after a release drops it — and a name on the list with no file behind it
-      # is a command that was renamed and never followed up.
-      - name: Every command is on the plugin's list
+      # The binary carries the slash commands inside it, one include_str! each,
+      # so a command added to the directory and forgotten in COMMANDS ships as
+      # a command nobody gets, and a name left in COMMANDS after its file is
+      # deleted fails the build. Both directories are checked: the ones this
+      # half owns, and the pair that only means anything with both halves
+      # present. The sweep side of the same promise — that every shipped command
+      # is one the uninstall also takes back — is a unit test in install.rs.
+      - name: Every command on disk is one the binary carries
         if: runner.os != 'Windows'
         run: |
           set -eu
-          . plugins/kebacc-antigravity/shared.sh
-          listed=$(kebacc_own_commands antigravity | sort)
-          shipped=$(cd plugins/kebacc-antigravity/src/commands && ls -- *.md | sort)
-          if [ "$listed" != "$shipped" ]; then
-            echo 'plugins/kebacc-antigravity/src/commands and kebacc_own_commands antigravity disagree:' >&2
-            printf '%s\n' "$listed" > /tmp/kebacc-listed
-            printf '%s\n' "$shipped" > /tmp/kebacc-shipped
-            diff /tmp/kebacc-listed /tmp/kebacc-shipped >&2 || true
-            exit 1
-          fi
-          echo "$(printf '%s\n' "$shipped" | wc -l | tr -d ' ') commands, all listed"
+          bad=0
+          # The include_str! paths, not every quoted name in the file: the
+          # tests name commands this plugin deliberately does not carry.
+          carried=$(grep -o 'commands\(-all\)\?/kebacc-[^"]*\.md' crates/kebacc-antigravity/src/cmd/install.rs |
+            sed 's|.*/||' | sort -u)
+          for file in plugins/kebacc-antigravity/src/commands/*.md plugins/kebacc-antigravity/src/commands-all/*.md; do
+            name=${file##*/}
+            echo "$carried" | grep -qx "$name" ||
+              { echo "$name is on disk but not carried by the binary" >&2; bad=1; }
+          done
+          for name in $carried; do
+            [ -f "plugins/kebacc-antigravity/src/commands/$name" ] ||
+              [ -f "plugins/kebacc-antigravity/src/commands-all/$name" ] ||
+              { echo "$name is carried by the binary but not on disk" >&2; bad=1; }
+          done
+          test "$bad" = 0
+          echo "$(ls plugins/kebacc-antigravity/src/commands/*.md plugins/kebacc-antigravity/src/commands-all/*.md | wc -l | tr -d ' ') commands, all carried"
 
-      # The installer is the half that has never been run outside Windows, so it
-      # is run here for real, against directories made for the occasion.
-      - name: install.sh puts everything where it says
+      # There is no install script any more: `kebacc-antigravity install` is the
+      # installer, and it carries the slash commands inside it. What used to be
+      # install.sh and install.ps1 is this one code path, run here for real on
+      # every platform, against directories made for the occasion.
+      - name: The binary installs and uninstalls itself
         if: runner.os != 'Windows'
         run: |
           set -eu
@@ -103,7 +107,7 @@ jobs:
           mkdir -p "$HOME/.claude-tools"
           printf '0.0.0' > "$HOME/.claude-tools/.version"
 
-          sh plugins/kebacc-antigravity/install.sh --binary target/release/kebacc-antigravity --status-line --auto-switch
+          target/release/kebacc-antigravity install --status-line --auto-switch
 
           test -x "$HOME/.claude-tools/kebacc-antigravity"
           test "$(cat "$HOME/.claude-tools/.antigravity-version")" = "$(cat plugins/kebacc-antigravity/VERSION)"
@@ -114,29 +118,46 @@ jobs:
           grep -q '"model": *"opus"' "$CLAUDE_CONFIG_DIR/settings.json"
           grep -q 'statusLine' "$CLAUDE_CONFIG_DIR/settings.json"
           grep -q 'SessionStart' "$CLAUDE_CONFIG_DIR/settings.json"
+          # Both halves, or the mid-task one goes back to being code nobody
+          # reaches: it shipped once already with no hook pointing at it.
+          grep -q 'PreToolUse' "$CLAUDE_CONFIG_DIR/settings.json"
+          grep -q -- '-Midtask' "$CLAUDE_CONFIG_DIR/settings.json"
           # One pair of hooks, never two: SessionStart and PreToolUse.
           test "$(grep -c 'auto -Provider' "$CLAUDE_CONFIG_DIR/settings.json")" = 2
           cat "$HOME"/.zshrc "$HOME"/.bashrc "$HOME"/.profile 2>/dev/null |
             grep -q 'kebacc-antigravity account switcher'
           "$HOME/.claude-tools/kebacc-antigravity" doctor > /dev/null
 
-          sh plugins/kebacc-antigravity/uninstall.sh
+          # --yes: the uninstall asks before taking anything, and there is no
+          # terminal here to answer it from. It is run from the installed copy,
+          # which is how somebody actually reaches it.
+          "$HOME/.claude-tools/kebacc-antigravity" uninstall --yes
 
           test ! -e "$HOME/.claude-tools/kebacc-antigravity"
-          test ! -e "$CLAUDE_CONFIG_DIR/commands/kebacc-list-antigravity.md"
+          for file in plugins/kebacc-antigravity/src/commands/*.md; do
+            test ! -e "$CLAUDE_CONFIG_DIR/commands/${file##*/}" || {
+              echo "the uninstall left ${file##*/} behind" >&2
+              exit 1
+            }
+          done
           # With one half gone the pair that spans both means nothing.
           test ! -e "$CLAUDE_CONFIG_DIR/commands/kebacc-list-all.md"
           test ! -e "$CLAUDE_CONFIG_DIR/commands/kebacc-auto-all.md"
+          # The Claude half's marker is not ours, and is still where it was.
+          test -f "$HOME/.claude-tools/.version"
           ! grep -q 'statusLine' "$CLAUDE_CONFIG_DIR/settings.json"
-          ! grep -q 'auto -Provider' "$CLAUDE_CONFIG_DIR/settings.json"
+          # Neither hook may outlive the binary they point at.
+          ! grep -q 'SessionStart' "$CLAUDE_CONFIG_DIR/settings.json"
+          ! grep -q 'PreToolUse' "$CLAUDE_CONFIG_DIR/settings.json"
           ! cat "$HOME"/.zshrc "$HOME"/.bashrc "$HOME"/.profile 2>/dev/null |
             grep -q 'kebacc-antigravity account switcher'
           echo 'installed and uninstalled cleanly'
 
-      # `install.ps1` is what Windows users run, and nothing else here covers
-      # it: the bootstrap job below installs the published release, not this
-      # build. Both hooks are checked, and both have to be gone afterwards.
-      - name: install.ps1 puts everything where it says
+      # The same on Windows, where deleting a running binary is not allowed:
+      # the uninstall hands the last of it to a copy it leaves behind, and this
+      # is where that is checked on a machine that is not the one it was
+      # written on.
+      - name: The binary installs and uninstalls itself
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
@@ -150,16 +171,15 @@ jobs:
           # A status line somebody else holds: ours displaces it on the way in
           # and has to hand it back on the way out.
           '{"model":"opus","statusLine":{"type":"command","command":"starship prompt"}}' | Set-Content -LiteralPath $settingsPath
-          # The Claude half, as far as this half can tell it is there: its
-          # marker is what makes the commands spanning both pools mean anything.
+          # The Claude half, as far as this half can tell it is there.
           New-Item -ItemType Directory -Path $tools -Force | Out-Null
           Set-Content -LiteralPath (Join-Path $tools '.version') -Value '0.0.0' -NoNewline
 
-          pwsh -NoProfile -File plugins/kebacc-antigravity/install.ps1 -ToolsDir $tools -Binary target/release/kebacc-antigravity.exe -StatusLine -AutoSwitch -NoProfileEdit
-          if ($LASTEXITCODE -ne 0) { throw "install.ps1 exited $LASTEXITCODE" }
+          target/release/kebacc-antigravity.exe install -ToolsDir $tools -StatusLine -AutoSwitch -NoProfileEdit
+          if ($LASTEXITCODE -ne 0) { throw "install exited $LASTEXITCODE" }
 
           $settings = Get-Content -LiteralPath $settingsPath -Raw
-          # Both halves of the auto hook, and the settings that were already there.
+          # Both halves, and the settings that were already there.
           foreach ($needle in 'statusLine', 'SessionStart', 'PreToolUse', '-Midtask', '"opus"') {
             if ($settings -notmatch [regex]::Escape($needle)) { throw "settings.json is missing $needle" }
           }
@@ -169,16 +189,26 @@ jobs:
             }
           }
 
-          pwsh -NoProfile -File plugins/kebacc-antigravity/uninstall.ps1 -ToolsDir $tools -NoProfileEdit -Yes
-          if ($LASTEXITCODE -ne 0) { throw "uninstall.ps1 exited $LASTEXITCODE" }
+          $exe = Join-Path $tools 'kebacc-antigravity.exe'
+          & $exe uninstall -ToolsDir $tools -NoProfileEdit -Yes
+          if ($LASTEXITCODE -ne 0) { throw "uninstall exited $LASTEXITCODE" }
 
           $settings = Get-Content -LiteralPath $settingsPath -Raw
           # Neither hook may outlive the binary they point at, and nothing of
           # ours may be left in the status line either.
           foreach ($needle in 'kebacc-antigravity', 'SessionStart', 'PreToolUse') {
-            if ($settings -match [regex]::Escape($needle)) { throw "uninstall.ps1 left $needle behind" }
+            if ($settings -match [regex]::Escape($needle)) { throw "the uninstall left $needle behind" }
           }
-          if (Test-Path -LiteralPath (Join-Path $tools 'kebacc-antigravity.exe')) { throw 'the binary is still there' }
+          # The copy left behind waits for this process to let go of the name,
+          # so the binary goes a moment after the command that removed it.
+          $deadline = (Get-Date).AddSeconds(30)
+          while ((Test-Path -LiteralPath $exe) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }
+          if (Test-Path -LiteralPath $exe) { throw 'the binary is still there' }
+          # The directory stays: the Claude half's marker is still in it, and
+          # taking the directory would uninstall a plugin nobody asked about.
+          if (-not (Test-Path -LiteralPath (Join-Path $tools '.version'))) {
+            throw "the uninstall took the other half's marker"
+          }
           $line = ($settings | ConvertFrom-Json).statusLine.command
           if ($line -ne 'starship prompt') { throw "the displaced status line did not come back: $line" }
           # With one half gone the pair that spans both means nothing.
@@ -189,110 +219,101 @@ jobs:
           }
           Write-Host 'installed and uninstalled cleanly, and starship has its status line back'
 
-      # The published binary and the one-command install are what most people
-      # will actually run, so the newest release is installed here the way they
-      # would install it.
-      - name: bootstrap.sh installs the published release
+      # The published binary is what most people will actually run, so the
+      # newest release is installed here the way they would install it: one
+      # file downloaded, asked to install itself.
+      - name: The published release installs and runs
         if: runner.os != 'Windows'
         # The anonymous rate limit is per address, and a runner shares its
         # address with everything else on that machine, so an unauthenticated
         # lookup here answers 403 often enough to fail a green build.
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -eu
+          # The newest kebacc-antigravity-v tag, named outright: the repository's
+          # Latest release is the Claude half's, and a download with no tag
+          # takes that one and finds none of this half's assets on it. Nothing
+          # of this half is published until the first such tag goes out, which
+          # this says rather than failing the build.
+          tag=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName --jq '[.[] | select(.tagName | startswith("kebacc-antigravity-v"))] | first | .tagName // ""')
+          if [ -z "$tag" ]; then
+            echo 'No release of this half is published yet, so there is nothing to install.'
+            exit 0
+          fi
           sandbox=$(mktemp -d)
           export HOME="$sandbox/home"
           export CLAUDE_CONFIG_DIR="$sandbox/claude"
           export KEBACC_SWITCH_ANTIGRAVITY_ACCOUNTS="$sandbox/antigravity-accounts"
           mkdir -p "$HOME" "$CLAUDE_CONFIG_DIR"
 
-          # Nothing of this half is published yet, and the bootstrapper installs
-          # a published release, so until the first one exists this step has
-          # nothing to install. It says so and stops rather than failing the
-          # build; every later run, once a release is out, tests it for real.
-          set +e
-          output=$(sh plugins/kebacc-antigravity/bootstrap.sh --no-profile-edit 2>&1)
-          status=$?
-          set -e
-          echo "$output"
-          if [ "$status" -ne 0 ]; then
-              case "$output" in
-                  *'no published kebacc-antigravity-v* release yet'*)
-                      echo 'No release of this half is published yet, so there is nothing to install.'
-                      exit 0 ;;
-              esac
-              exit "$status"
+          # The same names cmd/update.rs asks for, so this downloads the file a
+          # machine updating itself would have downloaded.
+          case "$(uname -s)-$(uname -m)" in
+            Darwin-arm64)  asset=kebacc-antigravity-aarch64-apple-darwin ;;
+            Darwin-x86_64) asset=kebacc-antigravity-x86_64-apple-darwin ;;
+            Linux-aarch64) asset=kebacc-antigravity-aarch64-unknown-linux-gnu ;;
+            *)             asset=kebacc-antigravity-x86_64-unknown-linux-gnu ;;
+          esac
+          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern "$asset" --dir "$sandbox" --clobber
+          chmod +x "$sandbox/$asset"
+
+          # That release was published before the installer moved into the
+          # binary, so there is no `install` on it to run. That is a release yet
+          # to be cut rather than a broken build, and saying so beats a red
+          # build that nothing in the tree can turn green. The next release
+          # brings this gate back by itself.
+          if ! "$sandbox/$asset" --help 2>&1 | grep -q '^  install '; then
+            echo "$tag predates the built-in installer, so there is nothing to install yet"
+            exit 0
           fi
+
+          "$sandbox/$asset" install --no-profile-edit
 
           test -x "$HOME/.claude-tools/kebacc-antigravity"
           "$HOME/.claude-tools/kebacc-antigravity" --version
           "$HOME/.claude-tools/kebacc-antigravity" doctor > /dev/null
-          test -f "$HOME/.claude-tools/.antigravity-version"
           test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-antigravity.md"
-
-          sh plugins/kebacc-antigravity/uninstall.sh
-          test ! -e "$HOME/.claude-tools/kebacc-antigravity"
+          "$HOME/.claude-tools/kebacc-antigravity" uninstall --yes --no-profile-edit
           echo 'the published binary installs and runs'
 
-      # The Windows half of the one-command install, run the same way as the
-      # POSIX one: against the newest release, into directories made for the
-      # occasion, and with the profile left alone since it lives outside both.
-      - name: bootstrap.ps1 installs the published release
+      # install-antigravity.bat runs `install` on the file it downloads, so the
+      # release it would fetch has to be one that carries that command. The
+      # question is asked here, in a shell that can quote a JSON filter and read
+      # an exit code, rather than in the cmd script below. No release of this
+      # half at all is not a failure either: the bat answers 2 for that, and
+      # this leaves the step to say so.
+      - name: Does the published release know how to install itself
+        id: published
         if: runner.os == 'Windows'
         shell: pwsh
         env:
-          GITHUB_TOKEN: ${{ github.token }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          $sandbox = Join-Path $env:RUNNER_TEMP ('bootstrap-' + [guid]::NewGuid().ToString('N'))
-          $tools = Join-Path $sandbox 'tools'
-          $env:CLAUDE_CONFIG_DIR = Join-Path $sandbox 'claude'
-          $env:KEBACC_SWITCH_ANTIGRAVITY_ACCOUNTS = Join-Path $sandbox 'antigravity-accounts'
-          New-Item -ItemType Directory -Path $env:CLAUDE_CONFIG_DIR -Force | Out-Null
-
-          # As in the POSIX step: no release of this half is published yet, and
-          # the bootstrapper installs a published one, so that case is reported
-          # and skipped instead of failing the build.
-          $output = pwsh -NoProfile -File plugins/kebacc-antigravity/bootstrap.ps1 -ToolsDir $tools -NoProfileEdit 2>&1
-          $status = $LASTEXITCODE
-          $output | ForEach-Object { Write-Host $_ }
-          if ($status -ne 0) {
-            if ($output -match 'No kebacc-antigravity-v\* release published') {
-              Write-Host 'No release of this half is published yet, so there is nothing to install.'
-              exit 0
+          # The runners are x64, which is the only asset this needs;
+          # install-antigravity.bat picks the arm64 one on a machine that has it.
+          $asset = 'kebacc-antigravity-x86_64-pc-windows-msvc.exe'
+          $dir = Join-Path $env:RUNNER_TEMP 'probe'
+          $tag = gh release list --repo $env:GITHUB_REPOSITORY --limit 100 --json tagName --jq '[.[] | select(.tagName | startswith("kebacc-antigravity-v"))] | first | .tagName // ""'
+          $knows = $false
+          if (-not $tag) {
+            Write-Host 'No release of this half is published yet, so there is nothing to install.'
+          } else {
+            gh release download $tag --repo $env:GITHUB_REPOSITORY --pattern $asset --dir $dir --clobber
+            if ($LASTEXITCODE -ne 0) { throw "$tag has no $asset on it" }
+            $help = & (Join-Path $dir $asset) --help 2>&1 | Out-String
+            $knows = $help -match '(?m)^  install '
+            if (-not $knows) {
+              Write-Host "$tag predates the built-in installer, so there is nothing to install yet"
             }
-            throw "bootstrap.ps1 exited $status"
           }
+          "installer=$($knows.ToString().ToLower())" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
 
-          $exe = Join-Path $tools 'kebacc-antigravity.exe'
-          if (-not (Test-Path -LiteralPath $exe)) { throw "Nothing was installed at $exe" }
-          & $exe --version
-          if ($LASTEXITCODE -ne 0) { throw "The installed binary would not report its version" }
-          & $exe doctor | Out-Null
-          if ($LASTEXITCODE -ne 0) { throw "doctor exited $LASTEXITCODE" }
-          if (-not (Test-Path -LiteralPath (Join-Path $tools '.antigravity-version'))) {
-            throw '.antigravity-version was not written'
-          }
-          if (-not (Test-Path -LiteralPath (Join-Path $env:CLAUDE_CONFIG_DIR 'commands/kebacc-list-antigravity.md'))) {
-            throw 'The slash commands were not installed'
-          }
-
-          pwsh -NoProfile -File plugins/kebacc-antigravity/uninstall.ps1 -ToolsDir $tools -NoProfileEdit -Yes
-          if ($LASTEXITCODE -ne 0) { throw "uninstall.ps1 exited $LASTEXITCODE" }
-          if (Test-Path -LiteralPath $exe) { throw 'The uninstaller left the binary behind' }
-          Write-Host 'the published binary installs and runs'
-
-      # install-antigravity.bat is what a double-click reaches, and nothing else
-      # runs it. It fetches bootstrap.ps1 from the newest release of this half
-      # and hands it whatever arguments it was given, so this covers the path a
-      # person actually takes rather than the one CI would take on its own.
-      #
-      # No release of this half is published yet. The installer answers 2 for
-      # that rather than 1, which is why the step reads the code instead of
-      # only asking whether it failed.
+      # The Windows half of the same thing, run through install-antigravity.bat: that
+      # file is what a double-click reaches, and nothing else tests it.
       - name: install-antigravity.bat installs the published release
-        if: runner.os == 'Windows'
+        if: runner.os == 'Windows' && steps.published.outputs.installer == 'true'
         shell: cmd
         env:
           GITHUB_TOKEN: ${{ github.token }}
@@ -304,6 +325,8 @@ jobs:
           set "TOOLS=%RUNNER_TEMP%\bat-tools"
           mkdir "%CLAUDE_CONFIG_DIR%"
           call install-antigravity.bat -ToolsDir "%TOOLS%" -NoProfileEdit
+          rem 2 is what the installer answers when no release of this half is
+          rem published yet. There is nothing to test until the first one is.
           if errorlevel 2 (
             echo No release of this half is published yet, so there is nothing to install.
             exit /b 0
@@ -311,80 +334,6 @@ jobs:
           if errorlevel 1 exit /b 1
           "%TOOLS%\kebacc-antigravity.exe" --version || exit /b 1
           "%TOOLS%\kebacc-antigravity.exe" doctor >nul || exit /b 1
-          if not exist "%TOOLS%\.antigravity-version" exit /b 1
           if not exist "%CLAUDE_CONFIG_DIR%\commands\kebacc-list-antigravity.md" exit /b 1
-          pwsh -NoProfile -File plugins\kebacc-antigravity\uninstall.ps1 -ToolsDir "%TOOLS%" -NoProfileEdit -Yes || exit /b 1
-          if exist "%TOOLS%\kebacc-antigravity.exe" exit /b 1
+          "%TOOLS%\kebacc-antigravity.exe" uninstall -ToolsDir "%TOOLS%" -NoProfileEdit -Yes || exit /b 1
           echo the published binary installs and runs
-
-      # The scope algebra exists twice: in the binary, which the slash commands
-      # call, and in shared.ps1, which the installers call. The two have to
-      # answer the same for every input, or installing the plugin and arming it
-      # by hand leave the hooks armed on different pools. `claude` appears here
-      # only as a scope an older build wrote, back when one binary carried both
-      # pools — not as a pool this one has.
-      - name: The scope algebra agrees with the binary
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          . ./plugins/kebacc-antigravity/shared.ps1
-          $widen = @(
-            @{ Existing = $null;     Adding = 'antigravity';  Want = 'antigravity' }
-            @{ Existing = '';        Adding = 'antigravity';  Want = 'antigravity' }
-            @{ Existing = 'claude';  Adding = 'antigravity';  Want = 'all' }
-            @{ Existing = 'antigravity';   Adding = 'antigravity';  Want = 'antigravity' }
-            @{ Existing = 'all';     Adding = 'antigravity';  Want = 'all' }
-            @{ Existing = 'off';     Adding = 'antigravity';  Want = 'antigravity' }
-            # A scope this version has never heard of is replaced, not widened.
-            @{ Existing = 'sonnet';  Adding = 'antigravity';  Want = 'antigravity' }
-          )
-          $bad = 0
-          foreach ($case in $widen) {
-            $got = Merge-KebaccAutoScope -Existing $case.Existing -Adding $case.Adding
-            if ($got -ne $case.Want) {
-              Write-Host "widen('$($case.Existing)','$($case.Adding)') = $got, wanted $($case.Want)"
-              $bad = 1
-            }
-          }
-          if ($bad) { throw 'shared.ps1 and the binary disagree about the hook scope' }
-          Write-Host "$($widen.Count) scopes, all as the binary answers them"
-
-      # Taking this half out leaves no hook of ours behind, whatever scope it
-      # carried: the hooks read there run this binary, and this binary has one
-      # pool. A hook left saying `-Provider claude` would run it on a name it
-      # refuses, in front of the user, before every tool call.
-      - name: Removing this pool takes every hook of ours with it
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $ErrorActionPreference = 'Stop'
-          . ./plugins/kebacc-antigravity/shared.ps1
-          foreach ($scope in 'antigravity', 'all', 'claude+antigravity') {
-            $hooks = '{"SessionStart":[{"hooks":[{"type":"command","command":"C:/t/kebacc-antigravity.exe auto -Provider SCOPE -Hook"}]}],"PreToolUse":[{"matcher":"*","hooks":[{"type":"command","command":"C:/t/kebacc-antigravity.exe auto -Provider SCOPE -Hook -Midtask"}]}]}'.Replace('SCOPE', $scope) | ConvertFrom-Json
-            Remove-KebaccAutoPool -Hooks $hooks -Pool 'antigravity'
-            $left = $hooks.PSObject.Properties.Name
-            if ($left.Count) { throw "scope '$scope' left $($left -join ', ') behind" }
-          }
-          # Somebody else's hooks, and the Claude half's, stay where they are.
-          $hooks = '{"PreToolUse":[{"matcher":"Bash","hooks":[{"type":"command","command":"my-linter"}]},{"hooks":[{"type":"command","command":"kebacc-switch auto -Provider claude -Hook"}]}]}' | ConvertFrom-Json
-          Remove-KebaccAutoPool -Hooks $hooks -Pool 'antigravity'
-          if (@($hooks.PreToolUse).Count -ne 2) { throw 'it took hooks that were not ours' }
-          Write-Host 'every scope disarms, and nobody else is touched'
-
-      - name: The PowerShell scripts parse
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          $bad = 0
-          foreach ($script in Get-ChildItem plugins/*/*.ps1) {
-            $errors = $null
-            [System.Management.Automation.Language.Parser]::ParseFile($script.FullName, [ref]$null, [ref]$errors) | Out-Null
-            if ($errors.Count) {
-              Write-Host "$($script.Name) FAILED: $($errors[0].Message)"
-              $bad = 1
-            } else {
-              Write-Host "$($script.Name) ok"
-            }
-          }
-          exit $bad

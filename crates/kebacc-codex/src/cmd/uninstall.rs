@@ -15,6 +15,8 @@ use std::time::Duration;
 
 /// How long the copy left behind waits for the name of the binary to come free.
 const REAP_WAIT: Duration = Duration::from_secs(60);
+/// How long an uninstall waits for the watcher to notice it was asked to go.
+const WATCHER_WAIT: Duration = Duration::from_secs(5);
 
 pub fn run(opts: &Options) -> i32 {
     let tools = super::install::tools_dir(opts);
@@ -51,6 +53,22 @@ pub fn run(opts: &Options) -> i32 {
             "The Claude Code settings point at another install, so they were left alone.",
             Color::Yellow,
         );
+    }
+
+    // The watcher outlives the session that started it and answers to no hook,
+    // so nothing above stops it. Left alone it would go on switching accounts
+    // for half an hour after this says the switcher is gone. It belongs to
+    // whichever install the hooks named, so it is only stopped when that is
+    // this one.
+    if ours {
+        if !super::watch::stop_and_wait(WATCHER_WAIT) {
+            say(
+                "A watcher is still running. Close the sessions using it and run this again.",
+                Color::Yellow,
+            );
+        } else {
+            say("Stopped the background watcher.", Color::Green);
+        }
     }
 
     let (removed, stuck) = files(&tools);

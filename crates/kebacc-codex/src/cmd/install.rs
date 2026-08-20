@@ -301,6 +301,9 @@ fn place(source: &Path, entry: &Path) -> Result<bool, String> {
     if same_file(source, entry) {
         return Ok(false);
     }
+    // A watcher started by the binary being replaced would go on checking with
+    // the old code for the rest of the session.
+    super::watch::request_stop();
     let fresh = entry.with_extension(format!("{}.new", std::process::id()));
     let _ = std::fs::remove_file(&fresh);
     std::fs::copy(source, &fresh).map_err(|problem| {

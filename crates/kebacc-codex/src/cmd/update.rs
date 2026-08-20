@@ -354,6 +354,11 @@ fn download(url: &str) -> Result<Vec<u8>, String> {
 }
 
 pub fn swap(exe: &Path, fresh: &Path) -> Result<(), String> {
+    // A watcher from the old binary keeps checking with the old code until its
+    // session ends. Renaming the running exe out of the way works on Windows,
+    // so this is not about the swap succeeding: it is about not leaving last
+    // week's logic running for hours.
+    super::watch::request_stop();
     let stale = exe.with_extension("old");
     let _ = std::fs::remove_file(&stale);
     if exe.exists() {

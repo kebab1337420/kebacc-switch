@@ -3,7 +3,11 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-const DEFAULT_INTERVAL_MS: u128 = 5 * 60 * 1000;
+/// How often the mid-task hook is allowed to look. Five minutes used to be
+/// the figure, which is five minutes of requests going to an account that
+/// may already be refusing them. A minute costs almost nothing: away from
+/// the cap the check reads the cached usage and never leaves the machine.
+const DEFAULT_INTERVAL_MS: u128 = 60 * 1000;
 
 pub fn run(provider: &str) -> i32 {
     // Word of the last detached switch, if one happened since we last ran.
@@ -11,6 +15,9 @@ pub fn run(provider: &str) -> i32 {
     // spending a turn on an account that moved under it, and that is worth
     // saying even on a call that is about to keep quiet.
     announce(super::auto::take_note());
+    // A tool call proves the session is alive, and is the cheapest place to
+    // notice the watcher died.
+    super::watch::ensure_running(provider);
     if about_us(&hook_payload()) {
         return 0;
     }
@@ -103,7 +110,7 @@ fn now_ms() -> u128 {
         .unwrap_or(0)
 }
 
-fn interval_ms() -> u128 {
+pub fn interval_ms() -> u128 {
     std::env::var("KEBACC_SWITCH_MIDTASK_INTERVAL_MS")
         .ok()
         .and_then(|raw| raw.trim().parse::<u128>().ok())

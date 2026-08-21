@@ -117,7 +117,7 @@ enum Stash {
 fn is_ours(line: Option<&Value>) -> bool {
     line.and_then(|line| line.get("command"))
         .and_then(Value::as_str)
-        .is_some_and(|text| text.contains("kebacc-switch"))
+        .is_some_and(super::doctor::is_ours_binary)
 }
 
 fn set_statusline(settings: &mut Value, on: bool, command: &str, kept: Option<Value>) -> Stash {
@@ -196,7 +196,7 @@ mod tests {
     use super::{set_statusline, set_updates, Stash};
     use serde_json::json;
 
-    const OURS: &str = "\"/tmp/kebacc-switch\" statusline";
+    const OURS: &str = "\"/tmp/kebacc\" statusline";
 
     #[test]
     fn the_status_line_keeps_the_rest_of_the_settings() {

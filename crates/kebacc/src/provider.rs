@@ -83,7 +83,7 @@ pub fn resolve(id: &str) -> Result<ProviderId, String> {
     match key.as_str() {
         "claude" | "claude-code" | "claudecode" | "cc" | "anthropic" => Ok(ProviderId::Claude),
         "codex" | "openai" | "chatgpt" | "gpt" => Err(
-            "Codex is not part of kebacc-switch. It lives in the kebacc-codex plugin, on the Codex branch."
+            "Codex is not part of kebacc. It lives in the kebacc-codex plugin, on the Codex branch."
                 .to_string(),
         ),
         _ => Err(format!(

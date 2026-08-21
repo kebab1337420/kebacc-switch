@@ -2,7 +2,7 @@
 ⚠️⚠️⚠️⚠️⚠️⚠️⚠️( MADE FOR BOITE : https://github.com/beboite/boite )⚠️⚠️⚠️⚠️⚠️⚠️⚠️
 
 
-# kebacc-switch 
+# kebacc 
 
 **Several Claude Code logins on one machine, and one command to move
 between them when the one you are on runs out of quota.**
@@ -23,8 +23,8 @@ and moves you to one that still has room — on its own, at session start and
 again mid-task, before you notice you were capped.
 
 ```
-crates/kebacc-switch/    the binary
-plugins/kebacc-switch/   the slash commands, compiled into the binary
+crates/kebacc/    the binary
+plugins/kebacc/   the slash commands, compiled into the binary
 ```
 
 ---
@@ -55,18 +55,18 @@ is read rather than the `latest` endpoint: the file is picked by its own name,
 whichever half was released last.
 
 ```sh
-name=kebacc-switch-aarch64-apple-darwin
+name=kebacc-aarch64-apple-darwin
 url=$(curl -fsSL https://api.github.com/repos/kebab1337420/kebacc-switch/releases |
   grep -o "https://[^\"]*/$name" | head -n 1)
-curl -fsSL "$url" -o /tmp/kebacc-switch && chmod +x /tmp/kebacc-switch
-/tmp/kebacc-switch install --status-line --auto-switch claude
+curl -fsSL "$url" -o /tmp/kebacc && chmod +x /tmp/kebacc
+/tmp/kebacc install --status-line --auto-switch claude
 ```
 
 With the `gh` CLI on the machine, the same thing is two lines:
 
 ```sh
-gh release download --repo kebab1337420/kebacc-switch --pattern kebacc-switch-aarch64-apple-darwin --dir /tmp
-chmod +x /tmp/kebacc-switch-* && /tmp/kebacc-switch-* install
+gh release download --repo kebab1337420/kebacc-switch --pattern kebacc-aarch64-apple-darwin --dir /tmp
+chmod +x /tmp/kebacc-* && /tmp/kebacc-* install
 ```
 
 The binary installs itself into `~/.claude-tools` and takes the slash commands
@@ -76,13 +76,13 @@ with it, so the copy in `/tmp` can go afterwards.
 
 ```sh
 cargo build --release
-./target/release/kebacc-switch install
+./target/release/kebacc install
 ```
 
 The installer copies the binary into `~/.claude-tools`, then writes the hooks,
 the status line and the slash commands into your Claude Code settings. It backs
 the settings file up first and refuses to write a result that would not parse.
-`kebacc-switch uninstall` takes all of it back out.
+`kebacc uninstall` takes all of it back out.
 
 Every option is spelled both ways — `-StatusLine` and `--status-line` reach the
 same flag, so a habit from either shell works:
@@ -113,7 +113,6 @@ Everything the plugin installs lives under the `/kebacc-` prefix.
 | Command | What it does |
 | --- | --- |
 | `/kebacc-list-claude` | the saved Claude Code accounts |
-| `/kebacc-list-all` | the same, plus every other pool installed beside it |
 
 A list command always asks the API rather than reading the cache, and always
 prints both quota windows with the time left until each one resets. There is
@@ -130,23 +129,11 @@ nothing to pass and nothing else to run.
 | Command | What it does |
 | --- | --- |
 | `/kebacc-auto-claude` | arm the auto-switch, session start and mid-task |
-| `/kebacc-auto-all` | the same, plus every other pool installed beside it |
 | `/kebacc-auto-toggle` | arm or disarm both auto hooks |
 
 Neither of these changes the account in use. Arming decides what the *next*
 sessions open on. Only `/kebacc-switch-claude` moves the login you are on right
 now.
-
-### The `-all` commands
-
-`/kebacc-list-all` and `/kebacc-auto-all` are the only two commands that reach
-past the Claude Code pool. Each provider lives on its own branch of this
-repository and installs its own plugin, its own binary and its own pool —
-Codex on the `Codex` branch today, and whatever follows it on a branch of its
-own. The `-all` commands walk whichever of those are installed on the machine
-and do the same work on each, so a second provider costs no second command.
-With only this plugin installed they behave exactly like their `-claude`
-counterparts.
 
 ### Upkeep
 
@@ -154,7 +141,6 @@ counterparts.
 | --- | --- |
 | `/kebacc-doctor` | check the install, the pool and the seals |
 | `/kebacc-update` | install the newest release |
-| `/kebacc-install-codex` | build and install the Codex plugin from its branch |
 
 ---
 
@@ -163,17 +149,17 @@ counterparts.
 The slash commands are thin wrappers; the binary takes the same work directly.
 
 ```sh
-kebacc-switch add     -Provider claude               # save the current login
-kebacc-switch list    -Provider all -Refresh -Countdown
-kebacc-switch switch  -Provider claude -Email you@example.com
-kebacc-switch auto    -Provider all                  # switch only if capped
-kebacc-switch arm     -Provider claude                # arm the auto-switch, change nothing now
-kebacc-switch arm     -Provider claude -Merge         # arm it without narrowing what is already armed
-kebacc-switch arm     -Provider claude -Drop          # take this pool out again
-kebacc-switch arm     -Provider off                   # disarm it
-kebacc-switch doctor  -Provider all
-kebacc-switch refresh -Provider all                  # re-read the quotas, print nothing
-kebacc-switch update
+kebacc add     -Provider claude               # save the current login
+kebacc list    -Provider all -Refresh -Countdown
+kebacc switch  -Provider claude -Email you@example.com
+kebacc auto    -Provider all                  # switch only if capped
+kebacc arm     -Provider claude                # arm the auto-switch, change nothing now
+kebacc arm     -Provider claude -Merge         # arm it without narrowing what is already armed
+kebacc arm     -Provider claude -Drop          # take this pool out again
+kebacc arm     -Provider off                   # disarm it
+kebacc doctor  -Provider all
+kebacc refresh -Provider all                  # re-read the quotas, print nothing
+kebacc update
 ```
 
 `-Provider` takes `claude` — the only pool this binary knows — and defaults to
@@ -191,9 +177,9 @@ with an `install-codex.bat` of its own attached to the release. Both halves are
 picked by tag prefix rather than by the "Latest" label, which only one of them
 can carry.
 
-`/kebacc-install-codex` clones the branch, builds it with cargo and runs its
+`kebacc install-codex` clones the branch, builds it with cargo and runs its
 installer, which is still the way to install a Codex half newer than its last
-release; the same thing by hand is `kebacc-switch install-codex`.
+release.
 
 **Exit codes**
 
@@ -224,14 +210,14 @@ Each snapshot carries an HMAC-SHA256 stamp, so a pool file edited outside the
 tool is reported as changed rather than trusted.
 
 The full account of what is stored and what the hooks do is in
-[`plugins/kebacc-switch/README.md`](plugins/kebacc-switch/README.md).
+[`plugins/kebacc/README.md`](plugins/kebacc/README.md).
 
 ---
 
 ## Self-update
 
 At session start, at most once a day, the switcher asks this repository's
-releases whether a newer `kebacc-switch-v*` tag exists and installs it in the
+releases whether a newer `kebacc-v*` tag exists and installs it in the
 background. `KEBACC_SWITCH_UPDATE=off` stops that, and so does installing with
 `-NoAutoUpdate`.
 
@@ -265,7 +251,7 @@ $flags = @(
     "--remap-path-prefix=$PWD=/src"
 )
 $env:CARGO_ENCODED_RUSTFLAGS = ($flags -join "`u{001f}")
-cargo build --release -p kebacc-switch
+cargo build --release -p kebacc
 ```
 
 `CARGO_ENCODED_RUSTFLAGS` rather than `RUSTFLAGS` because the separator is a

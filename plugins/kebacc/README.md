@@ -3,8 +3,8 @@
 Several logins for Claude Code, saved on this machine, and one
 command to move between them when one runs out of quota.
 
-It is a Rust binary: the crate is `crates/kebacc-switch` at the root of this
-repository, and the binary installs itself — `kebacc-switch install` puts it,
+It is a Rust binary: the crate is `crates/kebacc` at the root of this
+repository, and the binary installs itself — `kebacc install` puts it,
 the slash commands and the hooks into `~/.claude-tools` and the Claude Code
 settings. No binary is committed and there is no third-party
 repository in the trust path.
@@ -25,7 +25,7 @@ own runtime first.
 - **switch** — puts another saved login in front of the CLI.
 - **auto** — switches only when the one in use is out of quota, and only to one
   that is not. It does nothing on its own: something has to call it, which is
-  what `kebacc-switch install -AutoSwitch` sets up.
+  what `kebacc install -AutoSwitch` sets up.
 - **remove** — forgets a saved login. The live session is untouched.
 - **doctor** — what is installed, what is readable, what the pool thinks of
   itself. `-Protect` re-seals plain-text snapshots, `-Adopt` stamps the ones
@@ -38,15 +38,15 @@ Every command takes `-Provider claude`, which is also the default
 to run once per provider.
 
 ```
-kebacc-switch list -Provider all
-kebacc-switch auto -Provider claude
-kebacc-switch switch -Provider claude -Email you@example.com
+kebacc list -Provider all
+kebacc auto -Provider claude
+kebacc switch -Provider claude -Email you@example.com
 ```
 
 ## Staying up to date
 
 The switcher updates itself. At session start, at most once a day, it asks
-GitHub for the newest `kebacc-switch-v*` release of this repository, and if that
+GitHub for the newest `kebacc-v*` release of this repository, and if that
 release is newer than what is installed it downloads the binary built for this
 platform, checks it against the SHA-256 the release publishes for that asset,
 and puts it in place. That happens in a detached process, so the
@@ -59,11 +59,11 @@ the version it prints is the one you are running, which is the thing worth
 seeing every second.
 
 ```
-kebacc-switch update -Check   # exit 10 when a newer release exists
-kebacc-switch update          # install it now
+kebacc update -Check   # exit 10 when a newer release exists
+kebacc update          # install it now
 ```
 
-`kebacc-switch install -NoAutoUpdate` turns this off at install time by writing
+`kebacc install -NoAutoUpdate` turns this off at install time by writing
 `KEBACC_SWITCH_UPDATE=off` into the Claude Code settings. Two environment
 variables decide the rest:
 
@@ -78,7 +78,7 @@ session that is already running.
 
 ## Switching without being asked
 
-`kebacc-switch arm -Provider claude|off` is what arms it after the
+`kebacc arm -Provider claude|off` is what arms it after the
 fact — it writes that hook and nothing else, never touching the account in use.
 The slash commands `/kebacc-auto-claude` and `/kebacc-auto-toggle` are that
 command; switching the live login is `/kebacc-switch-claude`, and nothing
@@ -94,7 +94,7 @@ Two flags for a machine that carries the Codex half as well:
   own binary, under its own name, and are never read or written here. The
   uninstallers use it.
 
-`kebacc-switch install -AutoSwitch` writes a pair of hooks into
+`kebacc install -AutoSwitch` writes a pair of hooks into
 `~/.claude/settings.json`:
 
 - `SessionStart`, so `auto` runs once as each Claude Code session starts: a
@@ -108,7 +108,7 @@ Two flags for a machine that carries the Codex half as well:
   tool call it runs in front of is never held up. A tool call that is itself a
   switcher command is skipped — you asked to look, not to move. Naming the
   switcher is not the same as calling it: a `grep kebacc` or an edit to a file
-  under `crates/kebacc-switch/` still arms the check.
+  under `crates/kebacc/` still arms the check.
 
 Both hooks fire on something somebody does. A turn spent writing a long answer
 with no tool call in it fires neither, and that is a stretch where a quota can
@@ -125,12 +125,12 @@ lives longer than twelve hours whatever the stamps say. `doctor` says whether
 one is on duty, and `uninstall` stops it before removing anything.
 
 Installing again replaces those hooks rather than adding more, and
-`kebacc-switch uninstall` takes both back out.
+`kebacc uninstall` takes both back out.
 
 ## The status line
 
-`kebacc-switch install -StatusLine` points Claude Code's status line at
-`kebacc-switch
+`kebacc install -StatusLine` points Claude Code's status line at
+`kebacc
 statusline`, which reads the payload on stdin and prints one line. It draws the account in use and its two windows, how
 many saved logins still have room and, when the hooks are in place, what the
 switch is armed for:
@@ -148,7 +148,7 @@ payload Claude Code hands it, the rest from the cache the switcher already
 wrote. It keeps that cache moving on its own. The live window is written back
 into the account's snapshot, so the other sessions see it without asking
 anything, and when a saved account's numbers are more than five minutes old the
-draw spawns `kebacc-switch refresh` behind itself — a detached process that
+draw spawns `kebacc refresh` behind itself, a detached process that
 reads the quotas, writes them to the snapshots and exits. The draw itself does
 not wait for it; the fresher numbers land on the next one. One refresh at a
 time, machine-wide, however many sessions are open.
@@ -159,7 +159,7 @@ time, machine-wide, however many sessions are open.
 | `KEBACC_SWITCH_REFRESH_INTERVAL_MS` | how old the numbers may get before a draw refreshes them, in milliseconds (default 300000) |
 
 Inside Claude Code the same things are slash commands, all under one prefix:
-`/kebacc-add-claude`, `/kebacc-list-all`, `/kebacc-auto-all`, and so on. The
+`/kebacc-add-claude`, `/kebacc-list-claude`, `/kebacc-auto-claude`, and so on. The
 root [`README.md`](../../README.md) lists every one of them.
 
 ## Where things are kept
@@ -221,7 +221,7 @@ it needs, talks to DPAPI, to the Keychain or to libsecret through whatever the
 platform already has, and installs and uninstalls itself. There is no shell
 script left in this directory. `install.bat`, at the repository root, is the one
 exception, and it exists only so a Windows machine can start from a double-click:
-it downloads the published binary and runs `kebacc-switch install`.
+it downloads the published binary and runs `kebacc install`.
 
 What does need a toolchain is building the crate — or skip that: the releases
 carry a binary for Windows, for both kinds of Mac and for x86_64 and arm64
@@ -233,13 +233,13 @@ Linux. Download the one for the machine and ask it to install itself.
 src/commands/*.md               the slash commands, carried by the binary
                                  as include_str!, one per entry in COMMANDS
 VERSION                         the number the install stamps into .version
-crates/kebacc-switch/src/main.rs    the entry point, and `-Provider all`
-crates/kebacc-switch/src/provider.rs   what each CLI keeps on disk
-crates/kebacc-switch/src/pool.rs    the trust stamps
-crates/kebacc-switch/src/seal.rs    DPAPI, Keychain, libsecret
-crates/kebacc-switch/src/usage.rs   the quota windows and their cache
-crates/kebacc-switch/src/live.rs    the credentials the CLI is holding
-crates/kebacc-switch/src/cmd/       one file per command, status line included
+crates/kebacc/src/main.rs    the entry point, and `-Provider all`
+crates/kebacc/src/provider.rs   what each CLI keeps on disk
+crates/kebacc/src/pool.rs    the trust stamps
+crates/kebacc/src/seal.rs    DPAPI, Keychain, libsecret
+crates/kebacc/src/usage.rs   the quota windows and their cache
+crates/kebacc/src/live.rs    the credentials the CLI is holding
+crates/kebacc/src/cmd/       one file per command, status line included
                                  — install, uninstall and install-codex too
 ```
 

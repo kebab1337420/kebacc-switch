@@ -46,7 +46,7 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
     );
     say(
         &format!(
-            "  kebacc-switch {} on {} {}",
+            "  kebacc {} on {} {}",
             env!("CARGO_PKG_VERSION"),
             std::env::consts::OS,
             std::env::consts::ARCH
@@ -214,7 +214,7 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
         } else {
             say(
                 &format!(
-                    "  {} leftover file(s) from an earlier version. Remove with: kebacc-switch doctor -Provider {} -Clean",
+                    "  {} leftover file(s) from an earlier version. Remove with: kebacc doctor -Provider {} -Clean",
                     stale.len(),
                     provider.id.as_str()
                 ),
@@ -226,7 +226,7 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
     if plain > 0 && !opts.protect {
         say(
             &format!(
-                "  {plain} snapshot(s) in plain text. Fix with: kebacc-switch doctor -Provider {} -Protect",
+                "  {plain} snapshot(s) in plain text. Fix with: kebacc doctor -Provider {} -Protect",
                 provider.id.as_str()
             ),
             Color::Yellow,
@@ -265,7 +265,7 @@ fn check_settings(report: &mut Report) {
         .get("statusLine")
         .and_then(|l| jsonio::str_of(l, "command"))
         .unwrap_or_default();
-    if line.contains("statusline") && line.contains("kebacc-switch") {
+    if line.contains("statusline") && is_ours_binary(&line) {
         match missing_path(&line) {
             Some(gone) => report.bad(&format!(
                 "the status line points at {gone}, which is not there"
@@ -274,7 +274,7 @@ fn check_settings(report: &mut Report) {
         }
     } else {
         say(
-            "  status line not installed. Add it with: kebacc-switch install -StatusLine",
+            "  status line not installed. Add it with: kebacc install -StatusLine",
             Color::Dim,
         );
     }
@@ -282,7 +282,7 @@ fn check_settings(report: &mut Report) {
     let hooks = auto_hooks(&settings);
     match hooks.len() {
         0 => say(
-            "  auto does not run on its own. Arm it with: kebacc-switch install -AutoSwitch all",
+            "  auto does not run on its own. Arm it with: kebacc install -AutoSwitch all",
             Color::Dim,
         ),
         1 => report.good(&format!(
@@ -353,12 +353,34 @@ fn hooks_at(settings: &Value, event: &str) -> Vec<String> {
     found
 }
 
+/// The program a command line names, without a path or `.exe`.
+fn program_stem(command: &str) -> Option<String> {
+    let word = quoted_words(command).into_iter().next()?;
+    let name = word
+        .rsplit(['/', '\\'])
+        .next()
+        .unwrap_or(&word)
+        .to_lowercase();
+    Some(name.strip_suffix(".exe").unwrap_or(&name).to_string())
+}
+
+/// Whether this command line names our binary, including the name it had
+/// before the rename and the scripts that came before that. `kebacc-codex`
+/// is a different plugin and is not ours.
+pub fn is_ours_binary(command: &str) -> bool {
+    let lower = command.to_lowercase();
+    if lower.contains("claude-c") {
+        return true;
+    }
+    matches!(
+        program_stem(command).as_deref(),
+        Some("kebacc") | Some("kebacc-switch")
+    )
+}
+
 pub fn is_auto_command(command: &str) -> bool {
     let lower = command.to_lowercase();
-    let ours = ["kebacc-switch", "claude-c"]
-        .iter()
-        .any(|name| lower.contains(name));
-    ours && lower.split_whitespace().any(|word| word == "auto")
+    is_ours_binary(command) && lower.split_whitespace().any(|word| word == "auto")
 }
 
 pub fn hook_scope(command: &str) -> Option<String> {
@@ -474,17 +496,30 @@ fn on_path(cli: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::quoted_words;
+    use super::{is_ours_binary, quoted_words};
 
     #[test]
     fn a_quoted_path_with_a_space_stays_one_word() {
-        let words = quoted_words("\"C:/Program Files/kebacc-switch.exe\" statusline");
-        assert_eq!(words[0], "C:/Program Files/kebacc-switch.exe");
+        let words = quoted_words("\"C:/Program Files/kebacc.exe\" statusline");
+        assert_eq!(words[0], "C:/Program Files/kebacc.exe");
         assert_eq!(words[1], "statusline");
     }
 
     #[test]
     fn bare_words_split_on_spaces() {
         assert_eq!(quoted_words("a b  c"), vec!["a", "b", "c"]);
+    }
+
+    #[test]
+    fn kebacc_codex_is_not_this_binary() {
+        assert!(is_ours_binary(
+            "\"/tmp/kebacc\" auto -Provider claude -Hook"
+        ));
+        assert!(is_ours_binary(
+            "\"C:/Users/me/.claude-tools/kebacc-switch.exe\" auto -Provider claude -Hook"
+        ));
+        assert!(!is_ours_binary(
+            "\"/tmp/kebacc-codex\" auto -Provider codex -Hook"
+        ));
     }
 }

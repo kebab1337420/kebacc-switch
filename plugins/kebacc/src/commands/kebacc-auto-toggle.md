@@ -1,15 +1,15 @@
 ---
 description: Turn the auto-switch on or off, any time, no conditions
-allowed-tools: Bash(~/.claude-tools/kebacc-switch:*), Bash(~/.claude-tools/kebacc-switch.exe:*)
+allowed-tools: Bash(~/.claude-tools/kebacc:*), Bash(~/.claude-tools/kebacc.exe:*)
 argument-hint: "[on|off]"
 ---
 
 Flip the auto-switch. Argument: `$ARGUMENTS`
 
-Run `~/.claude-tools/kebacc-switch`, or `~/.claude-tools/kebacc-switch.exe` on Windows:
+Run `~/.claude-tools/kebacc`, or `~/.claude-tools/kebacc.exe` on Windows:
 
 ```
-~/.claude-tools/kebacc-switch arm -Provider <scope>
+~/.claude-tools/kebacc arm -Provider <scope>
 ```
 
 `<scope>` comes from the argument:
@@ -17,7 +17,7 @@ Run `~/.claude-tools/kebacc-switch`, or `~/.claude-tools/kebacc-switch.exe` on W
 - `off` — `off`
 - `claude` — `claude`
 - `on`, empty, or no argument — `claude` when nothing is armed, `off` when
-  something is. `~/.claude-tools/kebacc-switch doctor -Provider claude` says
+  something is. `~/.claude-tools/kebacc doctor -Provider claude` says
   which it is; the status line's `auto …` segment says the same.
 
 The command writes both of its hooks in `~/.claude/settings.json` itself — the

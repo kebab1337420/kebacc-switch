@@ -32,10 +32,7 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
     });
     let Some(email) = email.filter(|e| !e.is_empty()) else {
         say("Could not work out which account this is.", Color::Red);
-        say(
-            "Pass one: kebacc-switch add -Email you@example.com",
-            Color::Dim,
-        );
+        say("Pass one: kebacc add -Email you@example.com", Color::Dim);
         return 2;
     };
 

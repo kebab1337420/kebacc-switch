@@ -245,7 +245,7 @@ mod tests {
 
     #[test]
     fn a_missing_stamp_reads_as_ancient() {
-        assert_eq!(age("kebacc-switch-no-such-stamp"), Duration::MAX);
+        assert_eq!(age("kebacc-no-such-stamp"), Duration::MAX);
     }
 
     #[test]

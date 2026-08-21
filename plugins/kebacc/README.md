@@ -170,6 +170,7 @@ root [`README.md`](../../README.md) lists every one of them.
 | `~/.kebacc-switch-accounts/` | saved Claude Code logins |
 | `~/.claude/commands/kebacc-*.md` | the slash commands |
 | `~/.kebacc-switch/` | stamps, locks and caches (`KEBACC_SWITCH_STATE_DIR` moves it) |
+| `~/.kebacc-switch/kebacc.log` | what every switch did, rotated at 512 KB (`KEBACC_SWITCH_LOG=off` stops it) |
 
 The switching itself has four knobs, all read from the Claude Code settings'
 `env` block so the hooks see them:
@@ -200,6 +201,25 @@ soon as one does.
 
 One saved login is one `.json` file. The dotfiles beside them are the pool's own
 bookkeeping.
+
+## Keeping a saved login usable
+
+Claude Code rotates its tokens: a refresh returns a new refresh token and
+retires the one it was given. A snapshot taken once therefore goes off, and
+switching to it hands the CLI a pair the server has already forgotten, which is
+what a login prompt right after a switch means.
+
+So a switch does two things beyond copying a file. On the way out it writes the
+pair the CLI is using right now back into the snapshot of the login being left,
+keeping whatever the session rotated. On the way in it renews a saved pair that
+is within five minutes of expiry, and writes what comes back into the snapshot
+before handing it over.
+
+When a renewal fails the pair goes over unchanged and the CLI gets its own go at
+it; the switch says so, and the reason is in `~/.kebacc-switch/kebacc.log`.
+`/kebacc-doctor` reports each saved login's token, and `kebacc doctor -Renew`
+renews the ones that have run out. A login whose refresh token is dead needs a
+`/login` and `/kebacc-add-claude` once, and stays alive after that.
 
 ## How the saved logins are protected
 

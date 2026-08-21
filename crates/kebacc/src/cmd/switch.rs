@@ -37,14 +37,26 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
         }
     }
 
-    if let Err(problem) = live::activate(provider, target) {
-        say(&problem, Color::Red);
-        return 1;
-    }
+    let activation = match live::activate(provider, target) {
+        Ok(activation) => activation,
+        Err(problem) => {
+            say(&problem, Color::Red);
+            return 1;
+        }
+    };
     say(
         &format!("Switched {} to {}", provider.label, target.email),
         Color::Green,
     );
+    if activation.renewed {
+        say(
+            "Its token was out of date and was renewed on the way in.",
+            Color::Dim,
+        );
+    }
+    if let Some(warning) = activation.warning.as_deref() {
+        say(warning, Color::Yellow);
+    }
     say(
         "Restart or /login-free reload the CLI for it to pick the change up.",
         Color::Dim,

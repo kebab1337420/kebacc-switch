@@ -81,11 +81,14 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
         );
         if !protected {
             say(
-                "Stored in plain text: no OS secret store was available on this machine.",
+                "Stored in plain text and unstamped: no OS secret store was available on this machine.",
                 Color::Yellow,
             );
-        }
-        if !registered {
+            say(
+                "On Linux, install secret-tool from libsecret so the next save can seal and stamp.",
+                Color::Yellow,
+            );
+        } else if !registered {
             say(
                 "Saved but not stamped: this account has no stable id to stamp.",
                 Color::Dim,

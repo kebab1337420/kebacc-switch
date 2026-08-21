@@ -194,7 +194,7 @@ fn settings_point_here(tools: &Path) -> bool {
     }
     let ours: Vec<String> = ours
         .into_iter()
-        .filter(|text| text.contains("kebacc-switch"))
+        .filter(|text| super::doctor::is_ours_binary(text))
         .map(|text| level(&text))
         .collect();
     if ours.is_empty() {
@@ -250,7 +250,7 @@ fn reaper(tools: &Path) -> bool {
         return false;
     };
     let stand_in = std::env::temp_dir().join(format!(
-        "kebacc-switch-reap-{}{}",
+        "kebacc-reap-{}{}",
         std::process::id(),
         std::env::consts::EXE_SUFFIX
     ));
@@ -309,11 +309,14 @@ fn sweep_reapers() {
     let Ok(entries) = std::fs::read_dir(&temp) else {
         return;
     };
-    let mine = format!("kebacc-switch-reap-{}", std::process::id());
+    let pid = std::process::id();
+    let mine_new = format!("kebacc-reap-{pid}");
+    let mine_old = format!("kebacc-switch-reap-{pid}");
     for entry in entries.flatten() {
         let name = entry.file_name();
         let name = name.to_string_lossy();
-        if !name.starts_with("kebacc-switch-reap-") || name.starts_with(&mine) {
+        let ours = name.starts_with("kebacc-reap-") || name.starts_with("kebacc-switch-reap-");
+        if !ours || name.starts_with(&mine_new) || name.starts_with(&mine_old) {
             continue;
         }
         // A copy younger than the wait it was given may still be sitting on a
@@ -342,7 +345,10 @@ fn empty(tools: &Path) -> bool {
     let ours = [
         exe.clone(),
         format!("{exe}.old"),
+        "kebacc.old".into(),
         "kebacc-switch.old".into(),
+        "kebacc-switch.exe".into(),
+        "kebacc-switch".into(),
     ];
     let Ok(entries) = std::fs::read_dir(tools) else {
         return false;
@@ -379,6 +385,7 @@ fn files(tools: &Path) -> (usize, bool) {
         // replacing the extension, and the scripts this replaced wrote the
         // other one.
         format!("{exe}.old"),
+        "kebacc.old".to_string(),
         "kebacc-switch.old".to_string(),
         super::install::VERSION_FILE.to_string(),
         super::update::MARKER.to_string(),
@@ -401,15 +408,14 @@ fn files(tools: &Path) -> (usize, bool) {
             stuck = true;
         }
     }
-    // Half-finished updates: kebacc-switch.<pid>.new.
+    // Half-finished updates: kebacc.<pid>.new, and the pre-rename spelling.
     if let Ok(entries) = std::fs::read_dir(tools) {
         for entry in entries.flatten() {
             let name = entry.file_name();
             let name = name.to_string_lossy();
-            if name.starts_with("kebacc-switch.")
-                && name.ends_with(".new")
-                && std::fs::remove_file(entry.path()).is_ok()
-            {
+            let ours_new = (name.starts_with("kebacc.") || name.starts_with("kebacc-switch."))
+                && name.ends_with(".new");
+            if ours_new && std::fs::remove_file(entry.path()).is_ok() {
                 removed += 1;
             }
         }
@@ -444,7 +450,7 @@ fn profiles(tools: &Path) {
         let Ok(existing) = std::fs::read_to_string(&path) else {
             continue;
         };
-        if !existing.contains(super::install::PROFILE_MARKER) {
+        if !super::install::has_profile_block(&existing) {
             continue;
         }
         // The line under the marker names the binary it runs. One that names
@@ -455,7 +461,7 @@ fn profiles(tools: &Path) {
             .any(|line| level(line).contains(&wanted))
         {
             say(
-                &format!("Left the kebacc-switch line in {} alone.", path.display()),
+                &format!("Left the kebacc line in {} alone.", path.display()),
                 Color::Dim,
             );
             continue;
@@ -463,7 +469,7 @@ fn profiles(tools: &Path) {
         let kept = without_block(&existing);
         if std::fs::write(&path, &kept).is_ok() {
             say(
-                &format!("Took kebacc-switch out of {}", path.display()),
+                &format!("Took kebacc out of {}", path.display()),
                 Color::Green,
             );
         }
@@ -480,10 +486,7 @@ fn block_body(existing: &str) -> Vec<String> {
             take_next = false;
             continue;
         }
-        if line
-            .trim_start()
-            .starts_with(super::install::PROFILE_MARKER)
-        {
+        if super::install::is_profile_marker(line) {
             take_next = true;
         }
     }
@@ -498,10 +501,7 @@ fn without_block(existing: &str) -> String {
             skip_next = false;
             continue;
         }
-        if line
-            .trim_start()
-            .starts_with(super::install::PROFILE_MARKER)
-        {
+        if super::install::is_profile_marker(line) {
             skip_next = true;
             continue;
         }
@@ -518,8 +518,20 @@ mod tests {
     #[test]
     fn the_profile_block_goes_and_the_rest_of_the_file_stays() {
         let before = format!(
-            "export EDITOR=vi\n{}\nkebacc-switch() {{ \"/x\" \"$@\"; }}\nalias ll='ls -l'\n",
+            "export EDITOR=vi\n{}\nkebacc() {{ \"/x\" \"$@\"; }}\nalias ll='ls -l'\n",
             super::super::install::PROFILE_MARKER
+        );
+        let after = without_block(&before);
+        assert!(after.contains("export EDITOR=vi"));
+        assert!(after.contains("alias ll="));
+        assert!(!after.contains("kebacc()"));
+    }
+
+    #[test]
+    fn a_legacy_profile_block_is_taken_out_too() {
+        let before = format!(
+            "export EDITOR=vi\n{}\nkebacc-switch() {{ \"/x\" \"$@\"; }}\nalias ll='ls -l'\n",
+            super::super::install::LEGACY_PROFILE_MARKER
         );
         let after = without_block(&before);
         assert!(after.contains("export EDITOR=vi"));
@@ -536,7 +548,7 @@ mod tests {
     #[test]
     fn the_line_under_the_marker_is_the_one_read_back() {
         let profile = format!(
-            "export PATH=/bin\n{}\nkebacc-switch() {{ /a/tools/kebacc-switch \"$@\"; }}\n",
+            "export PATH=/bin\n{}\nkebacc() {{ /a/tools/kebacc \"$@\"; }}\n",
             super::super::install::PROFILE_MARKER
         );
         assert_eq!(
@@ -553,12 +565,12 @@ mod tests {
 
     #[test]
     fn a_path_is_levelled_to_one_spelling() {
-        let one = level("C:\\Users\\a\\.claude-tools\\kebacc-switch.exe");
-        let two = level("c:/users/a/.claude-tools/kebacc-switch.exe");
+        let one = level("C:\\Users\\a\\.claude-tools\\kebacc.exe");
+        let two = level("c:/users/a/.claude-tools/kebacc.exe");
         if cfg!(windows) {
             assert_eq!(one, two);
         } else {
-            assert!(one.contains("/kebacc-switch.exe"));
+            assert!(one.contains("/kebacc.exe"));
         }
     }
 

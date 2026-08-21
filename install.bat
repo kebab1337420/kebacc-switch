@@ -1,5 +1,5 @@
 @echo off
-rem Double-click installer for kebacc-switch on Windows.
+rem Double-click installer for kebacc on Windows.
 rem
 rem It downloads the published binary and asks it to install itself. The binary
 rem carries the slash commands inside it, so there is nothing else to fetch:
@@ -28,19 +28,19 @@ rem CI does: there is nobody there to press a key.
 setlocal
 
 set "REPO=kebab1337420/kebacc-switch"
-set "EXE=%TEMP%\kebacc-switch-installer.exe"
+set "EXE=%TEMP%\kebacc-installer.exe"
 
 rem The name is the one cmd/update.rs asks for, so the machine that updates
 rem itself later looks for the same file it was installed from.
-set "ASSET=kebacc-switch-x86_64-pc-windows-msvc.exe"
-if /i "%PROCESSOR_ARCHITECTURE%"=="ARM64" set "ASSET=kebacc-switch-aarch64-pc-windows-msvc.exe"
+set "ASSET=kebacc-x86_64-pc-windows-msvc.exe"
+if /i "%PROCESSOR_ARCHITECTURE%"=="ARM64" set "ASSET=kebacc-aarch64-pc-windows-msvc.exe"
 
 rem PowerShell 7 when it is here, the one Windows ships with otherwise.
 set "PS=powershell"
 where pwsh >nul 2>&1 && set "PS=pwsh"
 
-echo Fetching kebacc-switch...
-"%PS%" -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; try{[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12}catch{}; $h=@{'User-Agent'='kebacc-switch-installer'}; if($env:GITHUB_TOKEN){$h['Authorization']='Bearer '+$env:GITHUB_TOKEN}; $answer=Invoke-RestMethod ('https://api.github.com/repos/'+$env:REPO+'/releases') -Headers $h; $r=@(@($answer) | Where-Object {-not $_.draft -and -not $_.prerelease -and $_.tag_name -like 'kebacc-switch-v*'}) | Select-Object -First 1; if(-not $r){throw 'No kebacc-switch-v* release has been published yet.'}; $a=@(@($r.assets) | Where-Object {$_.name -eq $env:ASSET}) | Select-Object -First 1; if(-not $a){throw ($r.tag_name+' has no '+$env:ASSET+' attached to it.')}; $d=$h.Clone(); $d['Accept']='application/octet-stream'; Invoke-WebRequest $a.url -OutFile $env:EXE -Headers $d"
+echo Fetching kebacc...
+"%PS%" -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $ProgressPreference='SilentlyContinue'; try{[Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12}catch{}; $h=@{'User-Agent'='kebacc-installer'}; if($env:GITHUB_TOKEN){$h['Authorization']='Bearer '+$env:GITHUB_TOKEN}; $answer=Invoke-RestMethod ('https://api.github.com/repos/'+$env:REPO+'/releases') -Headers $h; $r=@(@($answer) | Where-Object {-not $_.draft -and -not $_.prerelease -and $_.tag_name -like 'kebacc-v*'}) | Select-Object -First 1; if(-not $r){throw 'No kebacc-v* release has been published yet.'}; $a=@(@($r.assets) | Where-Object {$_.name -eq $env:ASSET}) | Select-Object -First 1; if(-not $a){throw ($r.tag_name+' has no '+$env:ASSET+' attached to it.')}; $d=$h.Clone(); $d['Accept']='application/octet-stream'; Invoke-WebRequest $a.url -OutFile $env:EXE -Headers $d"
 if errorlevel 1 goto failed
 
 echo Saved to %EXE%

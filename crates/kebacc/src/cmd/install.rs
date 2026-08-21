@@ -28,47 +28,35 @@ use std::process::Command;
 pub const COMMANDS: &[(&str, &str)] = &[
     (
         "kebacc-add-claude.md",
-        include_str!("../../../../plugins/kebacc-switch/src/commands/kebacc-add-claude.md"),
-    ),
-    (
-        "kebacc-auto-all.md",
-        include_str!("../../../../plugins/kebacc-switch/src/commands/kebacc-auto-all.md"),
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-add-claude.md"),
     ),
     (
         "kebacc-auto-claude.md",
-        include_str!("../../../../plugins/kebacc-switch/src/commands/kebacc-auto-claude.md"),
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-auto-claude.md"),
     ),
     (
         "kebacc-auto-toggle.md",
-        include_str!("../../../../plugins/kebacc-switch/src/commands/kebacc-auto-toggle.md"),
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-auto-toggle.md"),
     ),
     (
         "kebacc-doctor.md",
-        include_str!("../../../../plugins/kebacc-switch/src/commands/kebacc-doctor.md"),
-    ),
-    (
-        "kebacc-install-codex.md",
-        include_str!("../../../../plugins/kebacc-switch/src/commands/kebacc-install-codex.md"),
-    ),
-    (
-        "kebacc-list-all.md",
-        include_str!("../../../../plugins/kebacc-switch/src/commands/kebacc-list-all.md"),
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-doctor.md"),
     ),
     (
         "kebacc-list-claude.md",
-        include_str!("../../../../plugins/kebacc-switch/src/commands/kebacc-list-claude.md"),
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-list-claude.md"),
     ),
     (
         "kebacc-remove-claude.md",
-        include_str!("../../../../plugins/kebacc-switch/src/commands/kebacc-remove-claude.md"),
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-remove-claude.md"),
     ),
     (
         "kebacc-switch-claude.md",
-        include_str!("../../../../plugins/kebacc-switch/src/commands/kebacc-switch-claude.md"),
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-switch-claude.md"),
     ),
     (
         "kebacc-update.md",
-        include_str!("../../../../plugins/kebacc-switch/src/commands/kebacc-update.md"),
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-update.md"),
     ),
 ];
 
@@ -87,6 +75,9 @@ pub const LEGACY: &[&str] = &[
     "claude-cc-statusline.ps1",
     "claude-cc-providers.ps1",
     "kebacc-switch.ps1",
+    // The binary name before this crate was renamed to kebacc.
+    "kebacc-switch",
+    "kebacc-switch.exe",
     "statusline.js",
     "claude-cc.js",
     "package.json",
@@ -99,15 +90,31 @@ pub const LEGACY: &[&str] = &[
 /// them any more, and they still show up in the slash command list.
 const DEAD_COMMANDS: &[&str] = &["refresh-a.md", "refresh-t.md"];
 
+/// Names this plugin used to write and no longer ships. Uninstall still
+/// removes them: an install from last week has the files on disk.
+///
+/// Kept apart from COMMANDS on purpose. Install writes COMMANDS. Uninstall
+/// sweeps COMMANDS, DEAD_COMMANDS and this list. Folding the three into one
+/// table would start shipping them again.
+pub const RETIRED: &[&str] = &[
+    "kebacc-auto-all.md",
+    "kebacc-list-all.md",
+    "kebacc-install-codex.md",
+];
+
 /// The marker that says which version of the plugin is installed here.
 pub const VERSION_FILE: &str = ".version";
 
 /// The line the shell profile is keyed on, so an uninstall can find its own
 /// block and leave everything else in the file alone.
-pub const PROFILE_MARKER: &str = "# kebacc-switch account switcher";
+pub const PROFILE_MARKER: &str = "# kebacc account switcher";
+
+/// The marker written before the binary was renamed. Install rewrites it and
+/// uninstall still removes the block.
+pub const LEGACY_PROFILE_MARKER: &str = "# kebacc-switch account switcher";
 
 pub fn exe_name() -> String {
-    format!("kebacc-switch{}", std::env::consts::EXE_SUFFIX)
+    format!("kebacc{}", std::env::consts::EXE_SUFFIX)
 }
 
 /// Where the binary goes. `-ToolsDir` moves it, which is what the tests in
@@ -149,11 +156,11 @@ pub fn run(opts: &Options) -> i32 {
 
     match place(&source, &entry) {
         Ok(true) => say(
-            &format!("Installed kebacc-switch into {}", tools.display()),
+            &format!("Installed kebacc into {}", tools.display()),
             Color::Green,
         ),
         Ok(false) => say(
-            &format!("kebacc-switch is already at {}", entry.display()),
+            &format!("kebacc is already at {}", entry.display()),
             Color::Dim,
         ),
         Err(problem) => {
@@ -258,19 +265,13 @@ pub fn run(opts: &Options) -> i32 {
     }
 
     say("", Color::Plain);
+    say(&format!("kebacc {version} is installed."), Color::Green);
+    say("  kebacc add       save the login you are on", Color::Dim);
     say(
-        &format!("kebacc-switch {version} is installed."),
-        Color::Green,
-    );
-    say(
-        "  kebacc-switch add       save the login you are on",
+        "  kebacc list      what is saved, and its quota",
         Color::Dim,
     );
-    say(
-        "  kebacc-switch list      what is saved, and its quota",
-        Color::Dim,
-    );
-    say("  kebacc-switch doctor    check everything", Color::Dim);
+    say("  kebacc doctor    check everything", Color::Dim);
     0
 }
 
@@ -359,6 +360,9 @@ pub fn ours(name: &str) -> bool {
     if DEAD_COMMANDS.contains(&name) {
         return true;
     }
+    if RETIRED.contains(&name) {
+        return true;
+    }
     let old = name.ends_with(".md")
         && (name.starts_with("kebacc-")
             || name.starts_with("account-")
@@ -399,22 +403,22 @@ fn ran(entry: &Path, args: &[&str]) -> bool {
         .unwrap_or(false)
 }
 
-/// `kebacc-switch` as a shell function rather than a directory on the PATH: it
+/// `kebacc` as a shell function rather than a directory on the PATH: it
 /// is one line to add, and an earlier version of this toolkit put a `claude.exe`
 /// shim on the PATH that nobody wants back.
 fn profile(entry: &Path) {
     for path in profile_paths() {
         let existing = std::fs::read_to_string(&path).unwrap_or_default();
-        if existing.contains(PROFILE_MARKER) {
+        if has_profile_block(&existing) {
             let updated = repoint(&existing, entry, &path);
             if updated != existing && std::fs::write(&path, &updated).is_ok() {
                 say(
-                    &format!("Pointed kebacc-switch in {} at the binary", path.display()),
+                    &format!("Pointed kebacc in {} at the binary", path.display()),
                     Color::Green,
                 );
             } else {
                 say(
-                    &format!("kebacc-switch is already in {}.", path.display()),
+                    &format!("kebacc is already in {}.", path.display()),
                     Color::Dim,
                 );
             }
@@ -425,17 +429,24 @@ fn profile(entry: &Path) {
         }
         let block = format!("\n{PROFILE_MARKER}\n{}\n", function_line(entry, &path));
         if std::fs::write(&path, format!("{existing}{block}")).is_ok() {
-            say(
-                &format!("Added kebacc-switch to {}", path.display()),
-                Color::Green,
-            );
+            say(&format!("Added kebacc to {}", path.display()), Color::Green);
             say("Open a new shell for it to exist there.", Color::Dim);
         }
     }
 }
 
+pub fn has_profile_block(existing: &str) -> bool {
+    existing.contains(PROFILE_MARKER) || existing.contains(LEGACY_PROFILE_MARKER)
+}
+
+pub fn is_profile_marker(line: &str) -> bool {
+    let text = line.trim_start();
+    text.starts_with(PROFILE_MARKER) || text.starts_with(LEGACY_PROFILE_MARKER)
+}
+
 /// The old line ran the switcher through a script. Same marker, different body:
-/// the line under the marker is replaced wherever it points.
+/// the line under the marker is replaced wherever it points. A block still
+/// carrying the pre-rename marker is rewritten to the current one.
 fn repoint(existing: &str, entry: &Path, path: &Path) -> String {
     let wanted = function_line(entry, path);
     let mut out = String::new();
@@ -447,8 +458,11 @@ fn repoint(existing: &str, entry: &Path, path: &Path) -> String {
             out.push('\n');
             continue;
         }
-        if line.trim_start().starts_with(PROFILE_MARKER) {
+        if is_profile_marker(line) {
             replace_next = true;
+            out.push_str(PROFILE_MARKER);
+            out.push('\n');
+            continue;
         }
         out.push_str(line);
         out.push('\n');
@@ -461,12 +475,9 @@ fn function_line(entry: &Path, profile: &Path) -> String {
         .extension()
         .is_some_and(|kind| kind.eq_ignore_ascii_case("ps1"))
     {
-        format!(
-            "function kebacc-switch {{ & \"{}\" @args }}",
-            entry.display()
-        )
+        format!("function kebacc {{ & \"{}\" @args }}", entry.display())
     } else {
-        format!("kebacc-switch() {{ \"{}\" \"$@\"; }}", entry.display())
+        format!("kebacc() {{ \"{}\" \"$@\"; }}", entry.display())
     }
 }
 
@@ -519,8 +530,16 @@ mod tests {
     fn the_codex_plugins_commands_are_left_alone() {
         assert!(!ours("kebacc-list-codex.md"));
         assert!(!ours("kebacc-auto-codex.md"));
-        // Ours, despite the name, because this plugin is the one that ships it.
-        assert!(ours("kebacc-install-codex.md"));
+    }
+
+    #[test]
+    fn retired_commands_are_still_swept() {
+        for name in RETIRED {
+            assert!(ours(name), "{name} was shipped and must still be removed");
+        }
+        assert!(!COMMANDS
+            .iter()
+            .any(|(shipped, _)| RETIRED.contains(shipped)));
     }
 
     #[test]
@@ -539,25 +558,31 @@ mod tests {
 
     #[test]
     fn a_powershell_profile_gets_the_powershell_spelling() {
-        let line = function_line(Path::new("C:/tools/kebacc-switch.exe"), Path::new("p.ps1"));
-        assert!(line.starts_with("function kebacc-switch"));
-        let line = function_line(Path::new("/tools/kebacc-switch"), Path::new(".zshrc"));
-        assert!(line.starts_with("kebacc-switch()"));
+        let line = function_line(Path::new("C:/tools/kebacc.exe"), Path::new("p.ps1"));
+        assert!(line.starts_with("function kebacc"));
+        let line = function_line(Path::new("/tools/kebacc"), Path::new(".zshrc"));
+        assert!(line.starts_with("kebacc()"));
     }
 
     #[test]
     fn repointing_replaces_the_line_under_the_marker_and_nothing_else() {
-        let before = format!(
-            "keep me\n{PROFILE_MARKER}\nkebacc-switch() {{ \"/old\" \"$@\"; }}\nkeep me too\n"
-        );
-        let after = repoint(
-            &before,
-            Path::new("/new/kebacc-switch"),
-            Path::new(".zshrc"),
-        );
+        let before =
+            format!("keep me\n{PROFILE_MARKER}\nkebacc() {{ \"/old\" \"$@\"; }}\nkeep me too\n");
+        let after = repoint(&before, Path::new("/new/kebacc"), Path::new(".zshrc"));
         assert!(after.contains("keep me\n"));
         assert!(after.contains("keep me too"));
-        assert!(after.contains("/new/kebacc-switch"));
+        assert!(after.contains("/new/kebacc"));
         assert!(!after.contains("/old"));
+    }
+
+    #[test]
+    fn a_legacy_profile_block_is_rewritten_to_the_new_name() {
+        let before =
+            format!("keep me\n{LEGACY_PROFILE_MARKER}\nkebacc-switch() {{ \"/old\" \"$@\"; }}\n");
+        let after = repoint(&before, Path::new("/new/kebacc"), Path::new(".zshrc"));
+        assert!(after.contains(PROFILE_MARKER));
+        assert!(!after.contains(LEGACY_PROFILE_MARKER));
+        assert!(after.contains("kebacc() { \"/new/kebacc\" \"$@\"; }"));
+        assert!(!after.contains("kebacc-switch()"));
     }
 }

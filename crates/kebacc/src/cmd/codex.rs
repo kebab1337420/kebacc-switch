@@ -2,7 +2,7 @@
 //! be `install-codex.ps1`, downloaded from GitHub by a slash command every time
 //! it was run because a copy on disk went stale.
 //!
-//! kebacc-switch handles Claude and nothing else. Codex has a plugin of its
+//! kebacc handles Claude and nothing else. Codex has a plugin of its
 //! own, built from the `Codex` branch of the same repository. It installs into
 //! the same tools directory under its own name and its own version marker: the
 //! two share the directory and nothing else, and each uninstaller names its own

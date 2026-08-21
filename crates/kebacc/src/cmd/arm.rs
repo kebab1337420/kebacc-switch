@@ -262,9 +262,9 @@ fn line(exe: &str, scope: &str, midtask: bool) -> String {
 /// cannot be read at all.
 fn installed() -> PathBuf {
     let name = if cfg!(windows) {
-        "kebacc-switch.exe"
+        "kebacc.exe"
     } else {
-        "kebacc-switch"
+        "kebacc"
     };
     let tools = provider::home().join(".claude-tools").join(name);
     std::env::current_exe().unwrap_or(tools)
@@ -311,10 +311,10 @@ mod tests {
         let mut settings = json!({
             "hooks": {
                 "SessionStart": [{ "hooks": [
-                    { "type": "command", "command": "kebacc-switch auto -Provider claude -Hook" }
+                    { "type": "command", "command": "kebacc auto -Provider claude -Hook" }
                 ] }],
                 "PreToolUse": [{ "matcher": "*", "hooks": [
-                    { "type": "command", "command": "kebacc-switch auto -Provider claude -Hook -Midtask" }
+                    { "type": "command", "command": "kebacc auto -Provider claude -Hook -Midtask" }
                 ] }]
             }
         });
@@ -327,7 +327,7 @@ mod tests {
     fn another_session_start_hook_is_left_alone() {
         let mut settings = json!({
             "hooks": { "SessionStart": [{ "hooks": [
-                { "type": "command", "command": "kebacc-switch auto -Provider all -Hook" },
+                { "type": "command", "command": "kebacc auto -Provider all -Hook" },
                 { "type": "command", "command": "echo hello" }
             ] }] }
         });
@@ -352,14 +352,14 @@ mod tests {
 
     #[test]
     fn arming_again_only_changes_the_pool_not_the_path() {
-        let command = "\"C:/Program Files/tools/kebacc-switch.exe\" auto -Provider all -Hook";
+        let command = "\"C:/Program Files/tools/kebacc.exe\" auto -Provider all -Hook";
         let mut settings = armed(command);
         let removed = strip(&mut settings);
         let exe = exe_of(&removed[0]);
         let next = line(&exe, "claude", false);
         assert_eq!(
             next,
-            "\"C:/Program Files/tools/kebacc-switch.exe\" auto -Provider claude -Hook"
+            "\"C:/Program Files/tools/kebacc.exe\" auto -Provider claude -Hook"
         );
         add(&mut settings, SESSION_START, None, &next, 25);
         assert_eq!(
@@ -370,11 +370,8 @@ mod tests {
 
     #[test]
     fn the_mid_task_line_carries_the_flag_and_the_matcher() {
-        let command = line("kebacc-switch", "claude", true);
-        assert_eq!(
-            command,
-            "\"kebacc-switch\" auto -Provider claude -Hook -Midtask"
-        );
+        let command = line("kebacc", "claude", true);
+        assert_eq!(command, "\"kebacc\" auto -Provider claude -Hook -Midtask");
         let mut settings = json!({});
         add(&mut settings, PRE_TOOL_USE, Some("*"), &command, 10);
         assert_eq!(settings["hooks"]["PreToolUse"][0]["matcher"], "*");
@@ -390,15 +387,15 @@ mod tests {
         // The line has to name a path that survives that, whether it is built
         // from this machine's own path or read back off a hook written before
         // this was true.
-        let raw = "C:\\Users\\me\\.claude-tools\\kebacc-switch.exe";
+        let raw = "C:\\Users\\me\\.claude-tools\\kebacc.exe";
         assert_eq!(
             line(raw, "claude", false),
-            "\"C:/Users/me/.claude-tools/kebacc-switch.exe\" auto -Provider claude -Hook"
+            "\"C:/Users/me/.claude-tools/kebacc.exe\" auto -Provider claude -Hook"
         );
         let old = format!("{raw} auto -Provider claude -Hook");
         assert_eq!(
             line(&exe_of(&old), "claude", false),
-            "\"C:/Users/me/.claude-tools/kebacc-switch.exe\" auto -Provider claude -Hook"
+            "\"C:/Users/me/.claude-tools/kebacc.exe\" auto -Provider claude -Hook"
         );
     }
 

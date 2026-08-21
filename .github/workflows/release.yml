@@ -6,7 +6,7 @@ name: release
 # finds its own file.
 on:
   push:
-    tags: ["kebacc-switch-v*"]
+    tags: ["kebacc-v*"]
   workflow_dispatch:
     inputs:
       tag:
@@ -76,7 +76,7 @@ jobs:
 
       - name: Test
         if: '!matrix.cross'
-        run: cargo test --release --target ${{ matrix.target }} -p kebacc-switch
+        run: cargo test --release --target ${{ matrix.target }} -p kebacc
 
       # The paths of the machine that built it have no business being in a
       # published binary.
@@ -84,21 +84,21 @@ jobs:
         shell: bash
         run: |
           export CARGO_ENCODED_RUSTFLAGS="--remap-path-prefix=$PWD=."
-          cargo build --release --target ${{ matrix.target }} -p kebacc-switch
+          cargo build --release --target ${{ matrix.target }} -p kebacc
 
       - name: Name it after its platform
         shell: bash
         run: |
           mkdir -p dist
           if [ "${{ runner.os }}" = "Windows" ]; then
-            cp "target/${{ matrix.target }}/release/kebacc-switch.exe" "dist/kebacc-switch-${{ matrix.target }}.exe"
+            cp "target/${{ matrix.target }}/release/kebacc.exe" "dist/kebacc-${{ matrix.target }}.exe"
           else
-            cp "target/${{ matrix.target }}/release/kebacc-switch" "dist/kebacc-switch-${{ matrix.target }}"
+            cp "target/${{ matrix.target }}/release/kebacc" "dist/kebacc-${{ matrix.target }}"
           fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: kebacc-switch-${{ matrix.target }}
+          name: kebacc-${{ matrix.target }}
           path: dist/*
           if-no-files-found: error
 

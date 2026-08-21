@@ -20,7 +20,7 @@ fn main() {
 }
 
 fn usage_text() {
-    println!("kebacc-switch <command> [options]");
+    println!("kebacc <command> [options]");
     println!();
     println!("  add         save the login the CLI is using right now");
     println!(
@@ -64,7 +64,7 @@ fn dispatch(args: &[String]) -> i32 {
         return 0;
     }
     if matches!(command.as_str(), "-v" | "--version" | "version") {
-        println!("kebacc-switch {}", env!("CARGO_PKG_VERSION"));
+        println!("kebacc {}", env!("CARGO_PKG_VERSION"));
         return 0;
     }
     let command = match command.as_str() {

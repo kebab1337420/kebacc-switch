@@ -64,7 +64,7 @@ fn hook_payload() -> String {
 ///
 /// Only the command actually being run counts. Merely naming us — a `grep
 /// kebacc`, a `cargo test` inside this repository, an edit to a file under
-/// `crates/kebacc-switch/` — is not a switcher call, and used to cost every
+/// `crates/kebacc/` — is not a switcher call, and used to cost every
 /// mid-task check for the length of a session spent working on the switcher
 /// itself.
 fn about_us(payload: &str) -> bool {
@@ -94,7 +94,7 @@ fn is_switcher(command: &str) -> bool {
         .unwrap_or(word)
         .to_lowercase();
     let program = program.strip_suffix(".exe").unwrap_or(&program);
-    matches!(program, "kebacc-switch" | "kebacc-codex")
+    matches!(program, "kebacc" | "kebacc-switch" | "kebacc-codex")
 }
 
 fn stamp_file() -> PathBuf {
@@ -148,7 +148,7 @@ mod tests {
     #[test]
     fn a_switcher_command_is_left_alone() {
         assert!(about_us(
-            r#"{"tool_name":"Bash","tool_input":{"command":"~/.claude-tools/kebacc-switch list -Provider all"}}"#
+            r#"{"tool_name":"Bash","tool_input":{"command":"~/.claude-tools/kebacc list -Provider all"}}"#
         ));
     }
 
@@ -162,17 +162,17 @@ mod tests {
     #[test]
     fn working_on_the_switcher_still_arms_the_check() {
         assert!(!about_us(
-            r#"{"tool_name":"Bash","tool_input":{"command":"grep -rn kebacc crates/kebacc-switch/src"}}"#
+            r#"{"tool_name":"Bash","tool_input":{"command":"grep -rn kebacc crates/kebacc/src"}}"#
         ));
         assert!(!about_us(
-            r#"{"tool_name":"Edit","tool_input":{"file_path":"crates/kebacc-switch/src/cmd/midtask.rs"}}"#
+            r#"{"tool_name":"Edit","tool_input":{"file_path":"crates/kebacc/src/cmd/midtask.rs"}}"#
         ));
     }
 
     #[test]
     fn the_windows_binary_counts_too() {
         assert!(about_us(
-            r#"{"tool_name":"Bash","tool_input":{"command":"\"C:\\Users\\x\\.claude-tools\\kebacc-switch.exe\" doctor"}}"#
+            r#"{"tool_name":"Bash","tool_input":{"command":"\"C:\\Users\\x\\.claude-tools\\kebacc.exe\" doctor"}}"#
         ));
     }
 

@@ -11,7 +11,7 @@ const REPO: &str = match option_env!("KEBACC_SWITCH_RELEASES_REPO") {
     Some(repo) => repo,
     None => "kebab1337420/kebacc-switch",
 };
-const TAG_PREFIX: &str = "kebacc-switch-v";
+const TAG_PREFIX: &str = "kebacc-v";
 const DEFAULT_INTERVAL_MS: u128 = 24 * 60 * 60 * 1000;
 const MAX_BYTES: u64 = 64 * 1024 * 1024;
 const DOWNLOAD_SECONDS: u64 = 120;
@@ -35,7 +35,7 @@ pub fn run(opts: &Options) -> i32 {
         Ok(Some(release)) => release,
         Ok(None) => {
             if !opts.quiet {
-                say(&format!("kebacc-switch {here} is the latest."), Color::Dim);
+                say(&format!("kebacc {here} is the latest."), Color::Dim);
             }
             return 0;
         }
@@ -48,16 +48,13 @@ pub fn run(opts: &Options) -> i32 {
     };
     if !newer(&release.version, &here) {
         if !opts.quiet {
-            say(&format!("kebacc-switch {here} is the latest."), Color::Dim);
+            say(&format!("kebacc {here} is the latest."), Color::Dim);
         }
         return 0;
     }
     if opts.check {
         say(
-            &format!(
-                "kebacc-switch {} is out. You are on {here}.",
-                release.version
-            ),
+            &format!("kebacc {} is out. You are on {here}.", release.version),
             Color::Yellow,
         );
         return 10;
@@ -80,7 +77,7 @@ pub fn run(opts: &Options) -> i32 {
         Ok(()) => {
             if !opts.quiet {
                 say(
-                    &format!("Updated kebacc-switch {here} to {}.", release.version),
+                    &format!("Updated kebacc {here} to {}.", release.version),
                     Color::Green,
                 );
             }
@@ -196,7 +193,7 @@ fn latest() -> Result<Option<Release>, String> {
     let url = format!("https://api.github.com/repos/{REPO}/releases?per_page=30");
     let mut response = usage::agent()
         .get(&url)
-        .header("User-Agent", &format!("kebacc-switch/{}", version()))
+        .header("User-Agent", &format!("kebacc/{}", version()))
         .header("Accept", "application/vnd.github+json")
         .header("X-GitHub-Api-Version", "2022-11-28")
         .call()
@@ -277,7 +274,7 @@ fn asset_name() -> String {
         ("linux", "aarch64") => "aarch64-unknown-linux-gnu",
         _ => "unsupported",
     };
-    format!("kebacc-switch-{triple}{}", std::env::consts::EXE_SUFFIX)
+    format!("kebacc-{triple}{}", std::env::consts::EXE_SUFFIX)
 }
 
 fn newer(candidate: &str, current: &str) -> bool {
@@ -314,7 +311,7 @@ fn install(asset: &Asset, from: &str, to: &str) -> Result<(), String> {
             }
         }
 
-        let fresh = dir.join(format!("kebacc-switch.{}.new", std::process::id()));
+        let fresh = dir.join(format!("kebacc.{}.new", std::process::id()));
         std::fs::write(&fresh, &bytes).map_err(|_| format!("Cannot write {}.", fresh.display()))?;
         runnable(&fresh);
         if let Err(problem) = swap(&exe, &fresh) {
@@ -334,7 +331,7 @@ fn install(asset: &Asset, from: &str, to: &str) -> Result<(), String> {
 fn download(url: &str) -> Result<Vec<u8>, String> {
     let mut response = usage::agent_with_timeout(DOWNLOAD_SECONDS)
         .get(url)
-        .header("User-Agent", &format!("kebacc-switch/{}", version()))
+        .header("User-Agent", &format!("kebacc/{}", version()))
         .header("Accept", "application/octet-stream")
         .call()
         .map_err(|_| format!("Could not download {url}."))?;
@@ -411,7 +408,10 @@ pub fn sweep() {
     for entry in entries.flatten() {
         let name = entry.file_name();
         let name = name.to_string_lossy();
-        if name.starts_with("kebacc-switch.") && name.ends_with(".new") && !recent(&entry) {
+        if (name.starts_with("kebacc.") || name.starts_with("kebacc-switch."))
+            && name.ends_with(".new")
+            && !recent(&entry)
+        {
             let _ = std::fs::remove_file(entry.path());
         }
     }
@@ -449,9 +449,9 @@ mod tests {
     #[test]
     fn a_release_without_a_digest_still_yields_an_asset() {
         let release = serde_json::json!({
-            "assets": [{ "name": "kebacc-switch-x", "url": "https://api/assets/1" }]
+            "assets": [{ "name": "kebacc-x", "url": "https://api/assets/1" }]
         });
-        let asset = asset_of(&release, "kebacc-switch-x").expect("asset");
+        let asset = asset_of(&release, "kebacc-x").expect("asset");
         assert_eq!(asset.url, "https://api/assets/1");
         assert!(asset.digest.is_none());
     }
@@ -460,12 +460,12 @@ mod tests {
     fn a_digest_loses_its_prefix() {
         let release = serde_json::json!({
             "assets": [{
-                "name": "kebacc-switch-x",
+                "name": "kebacc-x",
                 "url": "https://api/assets/1",
                 "digest": "sha256:AB12"
             }]
         });
-        let asset = asset_of(&release, "kebacc-switch-x").expect("asset");
+        let asset = asset_of(&release, "kebacc-x").expect("asset");
         assert_eq!(asset.digest.as_deref(), Some("ab12"));
     }
 
@@ -473,12 +473,12 @@ mod tests {
     fn the_cached_download_url_is_not_the_one_used() {
         let release = serde_json::json!({
             "assets": [{
-                "name": "kebacc-switch-x",
+                "name": "kebacc-x",
                 "url": "https://api/assets/1",
                 "browser_download_url": "https://cdn/x"
             }]
         });
-        let asset = asset_of(&release, "kebacc-switch-x").expect("asset");
+        let asset = asset_of(&release, "kebacc-x").expect("asset");
         assert_eq!(asset.url, "https://api/assets/1");
     }
 

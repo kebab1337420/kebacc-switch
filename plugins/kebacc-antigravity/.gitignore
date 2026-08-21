@@ -1,3 +1,0 @@
-# never commit credentials or account stores
-*.credentials.json
-.kebacc-switch-antigravity-accounts/

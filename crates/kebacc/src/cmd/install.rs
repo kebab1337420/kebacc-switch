@@ -27,32 +27,96 @@ use std::process::Command;
 /// fails the build instead of shipping as a command nobody gets.
 pub const COMMANDS: &[(&str, &str)] = &[
     (
+        "kebacc-add-antigravity.md",
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-add-antigravity.md"),
+    ),
+    (
         "kebacc-add-claude.md",
         include_str!("../../../../plugins/kebacc/src/commands/kebacc-add-claude.md"),
+    ),
+    (
+        "kebacc-add-codex.md",
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-add-codex.md"),
+    ),
+    (
+        "kebacc-auto-all.md",
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-auto-all.md"),
+    ),
+    (
+        "kebacc-auto-antigravity.md",
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-auto-antigravity.md"),
     ),
     (
         "kebacc-auto-claude.md",
         include_str!("../../../../plugins/kebacc/src/commands/kebacc-auto-claude.md"),
     ),
     (
+        "kebacc-auto-codex.md",
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-auto-codex.md"),
+    ),
+    (
         "kebacc-auto-toggle.md",
         include_str!("../../../../plugins/kebacc/src/commands/kebacc-auto-toggle.md"),
+    ),
+    (
+        "kebacc-doctor-antigravity.md",
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-doctor-antigravity.md"),
+    ),
+    (
+        "kebacc-doctor-codex.md",
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-doctor-codex.md"),
     ),
     (
         "kebacc-doctor.md",
         include_str!("../../../../plugins/kebacc/src/commands/kebacc-doctor.md"),
     ),
     (
+        "kebacc-list-all.md",
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-list-all.md"),
+    ),
+    (
+        "kebacc-list-antigravity.md",
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-list-antigravity.md"),
+    ),
+    (
         "kebacc-list-claude.md",
         include_str!("../../../../plugins/kebacc/src/commands/kebacc-list-claude.md"),
+    ),
+    (
+        "kebacc-list-codex.md",
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-list-codex.md"),
+    ),
+    (
+        "kebacc-remove-antigravity.md",
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-remove-antigravity.md"),
     ),
     (
         "kebacc-remove-claude.md",
         include_str!("../../../../plugins/kebacc/src/commands/kebacc-remove-claude.md"),
     ),
     (
+        "kebacc-remove-codex.md",
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-remove-codex.md"),
+    ),
+    (
+        "kebacc-switch-antigravity.md",
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-switch-antigravity.md"),
+    ),
+    (
         "kebacc-switch-claude.md",
         include_str!("../../../../plugins/kebacc/src/commands/kebacc-switch-claude.md"),
+    ),
+    (
+        "kebacc-switch-codex.md",
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-switch-codex.md"),
+    ),
+    (
+        "kebacc-update-antigravity.md",
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-update-antigravity.md"),
+    ),
+    (
+        "kebacc-update-codex.md",
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-update-codex.md"),
     ),
     (
         "kebacc-update.md",
@@ -64,9 +128,9 @@ pub const COMMANDS: &[(&str, &str)] = &[
 /// line, dot-sourced from the tools directory. Left in place they would still be
 /// on the PATH of a hook or a status line written by an earlier install.
 ///
-/// Named one by one on purpose: the tools directory is shared — kebacc-codex
-/// installs beside us — and a wildcard sweep would delete files this installer
-/// never wrote.
+/// Named one by one on purpose. The tools directory used to hold three
+/// binaries side by side; leftover copies from that split are swept here
+/// rather than left on PATH next to the one binary that remains.
 pub const LEGACY: &[&str] = &[
     "claude-cc.ps1",
     "claude-cc-core.ps1",
@@ -75,15 +139,18 @@ pub const LEGACY: &[&str] = &[
     "claude-cc-statusline.ps1",
     "claude-cc-providers.ps1",
     "kebacc-switch.ps1",
-    // The binary name before this crate was renamed to kebacc.
     "kebacc-switch",
     "kebacc-switch.exe",
+    "kebacc-codex",
+    "kebacc-codex.exe",
+    "kebacc-antigravity",
+    "kebacc-antigravity.exe",
     "statusline.js",
     "claude-cc.js",
     "package.json",
-    // The codex installer, back when it was a script on disk rather than a
-    // subcommand.
     "install-codex.ps1",
+    ".codex-version",
+    ".antigravity-version",
 ];
 
 /// Two commands from a version that had a thread relauncher. Nothing answers
@@ -98,35 +165,8 @@ const DEAD_COMMANDS: &[&str] = &["refresh-a.md", "refresh-t.md"];
 /// table would start shipping them again.
 pub const RETIRED: &[&str] = &["kebacc-install-codex.md"];
 
-/// The commands that only mean something with more than one pool present.
-/// Neither half owns them: every installer writes them, and the last
-/// uninstaller takes them out.
-pub const ALL_COMMANDS: &[(&str, &str)] = &[
-    (
-        "kebacc-auto-all.md",
-        include_str!("../../../../plugins/kebacc-all/kebacc-auto-all.md"),
-    ),
-    (
-        "kebacc-list-all.md",
-        include_str!("../../../../plugins/kebacc-all/kebacc-list-all.md"),
-    ),
-];
-
 /// The marker that says which version of the plugin is installed here.
 pub const VERSION_FILE: &str = ".version";
-/// The marker kebacc-codex writes beside ours.
-pub const CODEX_MARKER: &str = ".codex-version";
-/// The marker kebacc-antigravity writes beside ours.
-pub const ANTIGRAVITY_MARKER: &str = ".antigravity-version";
-
-const MARKERS: &[&str] = &[VERSION_FILE, CODEX_MARKER, ANTIGRAVITY_MARKER];
-
-/// Another half is still installed in this tools directory.
-pub fn sibling_installed(tools: &Path) -> bool {
-    MARKERS
-        .iter()
-        .any(|marker| *marker != VERSION_FILE && tools.join(marker).is_file())
-}
 
 /// The line the shell profile is keyed on, so an uninstall can find its own
 /// block and leave everything else in the file alone.
@@ -233,17 +273,8 @@ pub fn run(opts: &Options) -> i32 {
 
     // The marker says what the binary answered, not what this installer thinks
     // it is: `-Binary` can hand over another build, and a marker that disagrees
-    // with the file beside it sends `update` in a circle. It is written before
-    // the -all commands are synced, or this half would not count itself.
+    // with the file beside it sends `update` in a circle.
     let _ = crate::jsonio::write_text(&tools.join(VERSION_FILE), &installed);
-
-    let spanning = sync_all_commands(&tools);
-    if spanning > 0 {
-        say(
-            &format!("Installed the {spanning} command(s) that span every pool"),
-            Color::Green,
-        );
-    }
 
     if !opts.no_profile_edit {
         profile(&entry);
@@ -283,10 +314,9 @@ pub fn run(opts: &Options) -> i32 {
     }
 
     if opts.auto_switch {
-        // -Merge, not a plain arm: a hook already armed on a scope that covers
-        // the other half too goes back with that scope intact. Installing this
-        // plugin must not narrow what somebody else is running.
-        if !ran(&entry, &["arm", "-Provider", "claude", "-Merge", "-Quiet"]) {
+        // Every pool. -Merge widens a narrower hook already on the machine
+        // rather than replacing it with a different spelling of the same thing.
+        if !ran(&entry, &["arm", "-Provider", "all", "-Merge", "-Quiet"]) {
             say("Could not arm the auto-switch.", Color::Red);
             return 1;
         }
@@ -298,11 +328,11 @@ pub fn run(opts: &Options) -> i32 {
 
     say("", Color::Plain);
     say(&format!("kebacc {version} is installed."), Color::Green);
-    say("  kebacc add       save the login you are on", Color::Dim);
     say(
-        "  kebacc list      what is saved, and its quota",
+        "  kebacc add -Provider claude|codex|antigravity",
         Color::Dim,
     );
+    say("  kebacc list      every pool, and its quota", Color::Dim);
     say("  kebacc doctor    check everything", Color::Dim);
     0
 }
@@ -381,38 +411,9 @@ fn commands() -> Result<PathBuf, String> {
     Ok(dir)
 }
 
-/// The -all pair exists exactly when at least one half does. Written on
-/// install, taken away only when this uninstaller is the last one standing.
-pub fn sync_all_commands(tools: &Path) -> usize {
-    let dir = crate::provider::claude_config_dir().join("commands");
-    let keep = tools.join(VERSION_FILE).is_file() || sibling_installed(tools);
-    let mut touched = 0;
-    for (name, body) in ALL_COMMANDS {
-        let path = dir.join(name);
-        if keep {
-            if std::fs::create_dir_all(&dir).is_ok() && std::fs::write(&path, body).is_ok() {
-                touched += 1;
-            }
-        } else if path.is_file() && std::fs::remove_file(&path).is_ok() {
-            touched += 1;
-        }
-    }
-    if keep {
-        touched
-    } else {
-        0
-    }
-}
-
 /// Every name this plugin has ever installed a command under, which is also
-/// every name it takes away. kebacc-codex and kebacc-antigravity install into
-/// this same directory, so their names are not ours to delete. The one
-/// exception is a name we ship ourselves, which is ours to replace. The -all
-/// pair is not ours: whichever half is still standing owns it.
+/// every name it takes away.
 pub fn ours(name: &str) -> bool {
-    if ALL_COMMANDS.iter().any(|(shipped, _)| *shipped == name) {
-        return false;
-    }
     if COMMANDS.iter().any(|(shipped, _)| *shipped == name) {
         return true;
     }
@@ -422,11 +423,10 @@ pub fn ours(name: &str) -> bool {
     if RETIRED.contains(&name) {
         return true;
     }
-    let old = name.ends_with(".md")
+    name.ends_with(".md")
         && (name.starts_with("kebacc-")
             || name.starts_with("account-")
-            || name.starts_with("claude-account-"));
-    old && !name.contains("codex") && !name.contains("antigravity")
+            || name.starts_with("claude-account-"))
 }
 
 fn sweep(dir: &Path) {
@@ -586,35 +586,15 @@ mod tests {
     }
 
     #[test]
-    fn the_codex_plugins_commands_are_left_alone() {
-        assert!(!ours("kebacc-list-codex.md"));
-        assert!(!ours("kebacc-auto-codex.md"));
-    }
-
-    #[test]
-    fn the_antigravity_plugins_commands_are_left_alone() {
+    fn every_pool_command_is_ours_to_write_and_take_back() {
         for name in [
+            "kebacc-list-codex.md",
+            "kebacc-auto-codex.md",
             "kebacc-add-antigravity.md",
-            "kebacc-auto-antigravity.md",
-            "kebacc-doctor-antigravity.md",
-            "kebacc-list-antigravity.md",
-            "kebacc-remove-antigravity.md",
-            "kebacc-switch-antigravity.md",
-            "kebacc-update-antigravity.md",
+            "kebacc-list-all.md",
+            "kebacc-auto-all.md",
         ] {
-            assert!(!ours(name), "{name} belongs to kebacc-antigravity");
-        }
-    }
-
-    #[test]
-    fn neither_half_sweeps_the_commands_that_span_every_pool() {
-        for (name, _) in ALL_COMMANDS {
-            assert!(!ours(name), "{name} belongs to whichever half is left");
-            assert!(!RETIRED.contains(name), "{name} cannot be retired and live");
-            assert!(
-                !COMMANDS.iter().any(|(shipped, _)| shipped == name),
-                "{name} is not ours to ship as a Claude-only command"
-            );
+            assert!(ours(name), "{name} is shipped by this binary");
         }
     }
 
@@ -642,7 +622,7 @@ mod tests {
 
     #[test]
     fn the_shipped_commands_carry_their_front_matter() {
-        for (name, body) in COMMANDS.iter().chain(ALL_COMMANDS) {
+        for (name, body) in COMMANDS {
             assert!(body.starts_with("---"), "{name} has no front matter");
         }
     }

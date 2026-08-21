@@ -19,12 +19,9 @@ pub enum Mode {
     /// Write the pool asked for, whatever was armed before.
     Set,
     /// Add this pool to what is armed, leaving the rest of the scope alone.
-    /// Only hooks running this binary are ever read or rewritten, so a switcher
-    /// installed beside this one keeps its own pair whatever this does.
     Merge,
-    /// Take this pool out. This build carries one pool, so what is left is
-    /// nothing it could be armed on: the hooks go. The other half's hooks run
-    /// its own binary under its own name and were never touched.
+    /// Take this pool out. What is left stays armed. If nothing remains, the
+    /// hooks go.
     Drop,
 }
 
@@ -38,14 +35,13 @@ pub fn run(scope: &str, quiet: bool, mode: Mode) -> i32 {
     let scope = scope.trim().to_lowercase();
     let wanted = match scope.as_str() {
         "off" | "none" | "no" => None,
-        "claude" | "all" => Some("claude".to_string()),
-        other => {
-            say(
-                &format!("'{other}' is not a pool. Use claude or off."),
-                Color::Red,
-            );
-            return 64;
-        }
+        other => match provider::resolve(other) {
+            Ok(wanted) => Some(wanted.as_str().to_string()),
+            Err(problem) => {
+                say(&problem, Color::Red);
+                return 64;
+            }
+        },
     };
 
     if wanted.is_none() && mode != Mode::Set {
@@ -130,11 +126,9 @@ pub fn run(scope: &str, quiet: bool, mode: Mode) -> i32 {
     0
 }
 
-/// The scope one hook has to carry to cover both what is armed and what is being
-/// added. This build only ever finds its own hooks, so in practice that is
-/// `claude`; `all` is still understood, and so is the other half's name, because
-/// a hook written back when one binary carried both pools says one of those and
-/// has to keep meaning "this pool too" rather than being replaced outright.
+/// Two different pools, or `all` already, become `all`. One process now
+/// carries every pool, so a second name is not a sibling binary: it is the
+/// rest of this one.
 fn widen(existing: Option<&str>, adding: &str) -> String {
     let Some(had) = existing.map(|s| s.trim().to_lowercase()) else {
         return adding.to_string();
@@ -142,12 +136,7 @@ fn widen(existing: Option<&str>, adding: &str) -> String {
     if had.is_empty() || had == adding {
         return adding.to_string();
     }
-    match (had.as_str(), adding) {
-        ("claude" | "codex" | "all", "claude" | "all") => "all".to_string(),
-        // A scope this build has never heard of is not something to widen, so
-        // the pool asked for takes its place.
-        _ => adding.to_string(),
-    }
+    "all".to_string()
 }
 
 /// Writes the pair: the session-start hook and the mid-task one, same binary,
@@ -415,8 +404,9 @@ mod tests {
     }
 
     #[test]
-    fn a_scope_nobody_knows_is_replaced_not_widened() {
-        assert_eq!(widen(Some("sonnet"), "claude"), "claude");
+    fn a_second_name_widens_to_every_pool() {
+        assert_eq!(widen(Some("sonnet"), "claude"), "all");
+        assert_eq!(widen(Some("codex"), "antigravity"), "all");
     }
 
     #[test]

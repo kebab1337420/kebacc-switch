@@ -40,16 +40,9 @@ pub fn run(opts: &Options) -> i32 {
         //
         // -Drop rather than off: it takes this pool out and leaves anything
         // else armed, where off disarms whatever it finds.
-        super::arm::run("claude", true, super::arm::Mode::Drop);
+        super::arm::run("all", true, super::arm::Mode::Drop);
         super::wire::run(Some(false), None, true);
-        // KEBACC_SWITCH_UPDATE is a setting about a binary that is about to be
-        // gone, and left there it would silence the next install. The other
-        // halves read the same name, so it stays while any of them is
-        // installed: turning their updates back on is not this uninstaller's
-        // call.
-        if !super::install::sibling_installed(&tools) {
-            super::wire::run(None, Some(true), true);
-        }
+        super::wire::run(None, Some(true), true);
     } else {
         say(
             "The Claude Code settings point at another install, so they were left alone.",
@@ -123,33 +116,36 @@ pub fn run(opts: &Options) -> i32 {
         if gone > 0 {
             say(&format!("Removed {gone} slash command(s)"), Color::Green);
         }
-        // With this half gone the -all pair has nothing to span unless another
-        // half is still standing. The marker above is already off the disk, so
-        // this counts what is left.
-        super::install::sync_all_commands(&tools);
     }
 
     if !opts.no_profile_edit {
         profiles(&tools);
     }
 
-    let pool = crate::provider::spec(crate::provider::ProviderId::Claude).store;
     if opts.pool {
-        if pool.is_dir() {
-            let _ = std::fs::remove_dir_all(&pool);
-            say(
-                &format!("Deleted the pool {}", pool.display()),
-                Color::Yellow,
-            );
+        for id in crate::provider::ProviderId::ALL {
+            let pool = crate::provider::spec(id).store;
+            if pool.is_dir() {
+                let _ = std::fs::remove_dir_all(&pool);
+                say(
+                    &format!("Deleted the pool {}", pool.display()),
+                    Color::Yellow,
+                );
+            }
         }
-    } else if pool.is_dir() {
-        say(
-            &format!(
-                "The saved accounts are still in {}. Delete them with -Pool.",
-                pool.display()
-            ),
-            Color::Dim,
-        );
+    } else {
+        for id in crate::provider::ProviderId::ALL {
+            let pool = crate::provider::spec(id).store;
+            if pool.is_dir() {
+                say(
+                    &format!(
+                        "The saved accounts are still in {}. Delete them with -Pool.",
+                        pool.display()
+                    ),
+                    Color::Dim,
+                );
+            }
+        }
     }
 
     say("", Color::Plain);
@@ -160,7 +156,7 @@ pub fn run(opts: &Options) -> i32 {
         );
     } else {
         say(
-            "The other install still owns the settings and the slash commands.",
+            "Another copy of the switcher still owns the settings and the slash commands.",
             Color::Dim,
         );
     }

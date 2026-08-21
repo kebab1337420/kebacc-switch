@@ -1,7 +1,7 @@
 [package]
 name = "kebacc"
 version = "1.0.0"
-description = "Several Claude Code logins on one machine, and one command to move between them"
+description = "Several Claude, Codex and Antigravity logins on one machine, and one command to move between them"
 license = "MIT"
 edition = "2021"
 
@@ -25,6 +25,10 @@ hmac = "0.12"
 # Windows, so linking rustls and a copy of the root store there is dead weight.
 [target.'cfg(windows)'.dependencies]
 ureq = { version = "3", default-features = false, features = ["native-tls", "json"] }
+windows-sys = { version = "0.60", features = [
+    "Win32_Foundation",
+    "Win32_Security_Credentials",
+] }
 
 [target.'cfg(not(windows))'.dependencies]
 ureq = { version = "3", default-features = false, features = ["rustls", "json"] }

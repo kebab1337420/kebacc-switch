@@ -6,12 +6,13 @@ allowed-tools: Bash(~/.claude-tools/kebacc:*), Bash(~/.claude-tools/kebacc.exe:*
 Run `~/.claude-tools/kebacc`, or `~/.claude-tools/kebacc.exe` on Windows:
 
 ```
-~/.claude-tools/kebacc arm -Provider claude
+~/.claude-tools/kebacc arm -Provider claude -Merge
 ```
 
-This only arms the auto-switch. It never changes the account in use on its own,
-whatever the quota says at the moment you run it — only `/kebacc-switch-claude`
-does that on the spot.
+This only arms the auto-switch for the Claude pool. `-Merge` adds it to
+whatever is already armed, so this command cannot drop Codex or Antigravity.
+It never changes the account in use on its own, whatever the quota says at
+the moment you run it. Only `/kebacc-switch-claude` does that on the spot.
 
 Armed means two things: the next sessions open on an account that has room, and
 a session already running moves to one when the current account runs out

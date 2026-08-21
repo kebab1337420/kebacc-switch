@@ -13,10 +13,9 @@ rem Invoke-RestMethod writes a JSON array as one object rather than as a stream
 rem of them, so the answer is assigned before it is filtered. Filtering it inline
 rem matches nothing once the repository has more than one release.
 rem
-rem The tag prefix, not "the newest release that is not a pre-release": the same
-rem repository publishes the Codex half under kebacc-codex-v tags, and one of
-rem those going out last would otherwise be the release this reaches into for a
-rem file that is not on it.
+rem The tag prefix, not GitHub's Latest label: leftover kebacc-codex-v and
+rem kebacc-antigravity-v tags from the old split can still be the newest
+rem release GitHub points Latest at.
 rem
 rem Arguments are passed through to the installer by name, so this works:
 rem

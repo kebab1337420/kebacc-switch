@@ -1,5 +1,6 @@
 mod cmd;
 mod jsonio;
+mod keyring;
 mod live;
 mod lock;
 mod log;
@@ -18,19 +19,14 @@ mod term {
 mod usage;
 
 use cmd::Options;
-use provider::ProviderId;
+use provider::{ProviderId, Wanted};
 use term::{say, Color};
 
-/// Keychain / libsecret account this build stores the seal key under.
-/// Saved logins on existing machines only open if this stays this string.
-const SEAL_ACCOUNT: &str = "kebacc-switch";
-
-fn init() {
-    kebacc_core::seal::set_secret_account(SEAL_ACCOUNT);
+fn bind_seal(id: ProviderId) {
+    kebacc_core::seal::set_secret_account(id.seal_account());
 }
 
 fn main() {
-    init();
     cmd::update::sweep();
     let args: Vec<String> = std::env::args().skip(1).collect();
     std::process::exit(dispatch(&args));
@@ -56,15 +52,13 @@ fn usage_text() {
     println!(
         "  uninstall   take all of that back, leaving the saved logins (-Pool removes those too)"
     );
-    println!(
-        "  install-codex   build and install the Codex half from this workspace (or clone master)"
-    );
     println!();
     println!("  list -Countdown   both quota windows of every saved account, with their resets (-Refresh reads them again first)");
     println!("  auto -Midtask     auto from a tool-use hook, at most once an interval");
     println!("  watch             keep checking on a clock of its own, for the stretches with no tool call (the hooks start this)");
     println!("  refresh           read every saved account's quota again, silently (the status line spawns this)");
-    println!("  arm -Provider claude|off   arm the session-start auto-switch, or turn it off");
+    println!("  -Provider claude|codex|antigravity|all   which pool. list, auto and doctor default to all");
+    println!("  arm -Provider all|claude|codex|antigravity|off");
     println!("  arm -Provider claude -Merge         add this pool to whatever is already armed, rather than replacing it");
     println!(
         "  arm -Provider claude -Drop          take this pool out, leaving anything else armed"
@@ -93,7 +87,6 @@ fn dispatch(args: &[String]) -> i32 {
         "save" => "add",
         "check" => "doctor",
         "upgrade" | "selfupdate" => "update",
-        "installcodex" | "codex" => "install-codex",
         other => other,
     };
     if !matches!(
@@ -113,7 +106,6 @@ fn dispatch(args: &[String]) -> i32 {
             | "watch"
             | "install"
             | "uninstall"
-            | "install-codex"
             | "reap"
     ) {
         say(&format!("Unknown command '{command}'."), Color::Red);
@@ -122,6 +114,7 @@ fn dispatch(args: &[String]) -> i32 {
     }
 
     if command == "statusline" {
+        bind_seal(ProviderId::Claude);
         return cmd::statusline::run();
     }
 
@@ -132,7 +125,12 @@ fn dispatch(args: &[String]) -> i32 {
         return cmd::statusline::gitstat(std::path::Path::new(root));
     }
 
-    let (wanted, mut options) = match parse(&args[1..]) {
+    let default_provider = if matches!(command, "add" | "switch" | "remove") {
+        "claude"
+    } else {
+        "all"
+    };
+    let (wanted, mut options) = match parse(&args[1..], default_provider) {
         Ok(parsed) => parsed,
         Err(problem) => {
             say(&problem, Color::Red);
@@ -143,7 +141,6 @@ fn dispatch(args: &[String]) -> i32 {
     match command {
         "install" => return cmd::install::run(&options),
         "uninstall" => return cmd::uninstall::run(&options),
-        "install-codex" => return cmd::codex::run(&options),
         // Not in the help: it is the copy an uninstall leaves behind to take
         // the name of the binary once this process lets go of it.
         "reap" => return cmd::uninstall::reap(&options),
@@ -190,14 +187,25 @@ fn dispatch(args: &[String]) -> i32 {
         return cmd::midtask::run(&wanted);
     }
 
-    // `all` is kept as a spelling of `claude`: the hooks written before Codex
-    // moved out to its own plugin still say `-Provider all`.
-    if provider::is_all(&wanted) {
-        return hushed(run(command, ProviderId::Claude, &options), &options);
-    }
-
     match provider::resolve(&wanted) {
-        Ok(id) => hushed(run(command, id, &options), &options),
+        Ok(Wanted::All) if matches!(command, "add" | "switch" | "remove") => {
+            say(
+                "Pick a pool: -Provider claude, codex or antigravity.",
+                Color::Red,
+            );
+            64
+        }
+        Ok(scope) => {
+            let mut code = 0;
+            for id in scope.ids() {
+                bind_seal(id);
+                let next = run(command, id, &options);
+                if code == 0 {
+                    code = next;
+                }
+            }
+            hushed(code, &options)
+        }
         Err(problem) => {
             say(&problem, Color::Red);
             64
@@ -227,8 +235,8 @@ fn run(command: &str, id: ProviderId, options: &Options) -> i32 {
     }
 }
 
-fn parse(tokens: &[String]) -> Result<(String, Options), String> {
-    let mut provider = "claude".to_string();
+fn parse(tokens: &[String], default_provider: &str) -> Result<(String, Options), String> {
+    let mut provider = default_provider.to_string();
     let mut options = Options::default();
     let mut index = 0;
 
@@ -255,7 +263,10 @@ fn parse(tokens: &[String]) -> Result<(String, Options), String> {
             next.cloned()
         };
         match name.as_str() {
-            "provider" | "p" => provider = value().ok_or("-Provider needs a name: claude.")?,
+            "provider" | "p" => {
+                provider =
+                    value().ok_or("-Provider needs a name: claude, codex, antigravity or all.")?
+            }
             "email" | "e" => options.email = Some(value().ok_or("-Email needs an address.")?),
             "quiet" => options.quiet = true,
             "hook" => {
@@ -280,16 +291,13 @@ fn parse(tokens: &[String]) -> Result<(String, Options), String> {
             "toolsdir" => options.tools_dir = Some(value().ok_or("-ToolsDir needs a directory.")?),
             "binary" => options.binary = Some(value().ok_or("-Binary needs a path.")?),
             // `-AutoSwitch claude` is accepted so the words the old installers
-            // took still work; claude is the only pool this plugin has.
+            // took still work; the value is ignored, install arms every pool.
             "autoswitch" => {
                 let _ = value();
                 options.auto_switch = true;
             }
             "noprofileedit" => options.no_profile_edit = true,
             "pool" => options.pool = true,
-            "source" => options.source = Some(value().ok_or("-Source needs a URL or a path.")?),
-            "branch" => options.branch = Some(value().ok_or("-Branch needs a name.")?),
-            "keepcheckout" => options.keep_checkout = true,
             "autoupdate" => options.updates = Some(true),
             "noautoupdate" => options.updates = Some(false),
             other => return Err(format!("Unknown option '-{other}'.")),

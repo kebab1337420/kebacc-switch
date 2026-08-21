@@ -2,8 +2,6 @@
 members = [
     "crates/kebacc-core",
     "crates/kebacc",
-    "crates/kebacc-codex",
-    "crates/kebacc-antigravity",
 ]
 resolver = "2"
 

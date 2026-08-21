@@ -1,22 +1,26 @@
 use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
-use std::sync::OnceLock;
+use std::sync::Mutex;
 use std::time::Duration;
 
 pub const PREFIX: &str = "ccx1:";
 
-static SECRET_ACCOUNT: OnceLock<&'static str> = OnceLock::new();
+static SECRET_ACCOUNT: Mutex<Option<&'static str>> = Mutex::new(None);
 
 /// The keychain / libsecret account the AES wrapping key is stored under.
 ///
 /// An existing install can only open its saved logins if this is the same
-/// string that wrote them. The caller sets it once at startup.
+/// string that wrote them. Claude and Codex share `kebacc-switch`; Antigravity
+/// uses `kebacc-antigravity`. One process lists every pool, so this can move
+/// between commands.
 pub fn set_secret_account(name: &'static str) {
-    let _ = SECRET_ACCOUNT.set(name);
+    if let Ok(mut slot) = SECRET_ACCOUNT.lock() {
+        *slot = Some(name);
+    }
 }
 
 pub fn secret_account() -> Option<&'static str> {
-    SECRET_ACCOUNT.get().copied()
+    SECRET_ACCOUNT.lock().ok().and_then(|slot| *slot)
 }
 
 /// Deadline for `security` and `secret-tool`. Either can wait forever for a
@@ -397,10 +401,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn nothing_can_change_the_account_after_the_first_caller_sets_it() {
-        set_secret_account("first-account");
-        let settled = secret_account().expect("set on the line above");
-        set_secret_account("second-account");
-        assert_eq!(secret_account(), Some(settled));
+    fn the_account_can_be_switched_between_pools() {
+        set_secret_account("kebacc-switch");
+        assert_eq!(secret_account(), Some("kebacc-switch"));
+        set_secret_account("kebacc-antigravity");
+        assert_eq!(secret_account(), Some("kebacc-antigravity"));
     }
 }

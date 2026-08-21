@@ -404,8 +404,9 @@ fn program_stem(command: &str) -> Option<String> {
 }
 
 /// Whether this command line names our binary, including the name it had
-/// before the rename and the scripts that came before that. `kebacc-codex`
-/// is a different plugin and is not ours.
+/// before the rename, the scripts that came before that, and the leftover
+/// `kebacc-codex` / `kebacc-antigravity` binaries from when each pool had
+/// its own process.
 pub fn is_ours_binary(command: &str) -> bool {
     let lower = command.to_lowercase();
     if lower.contains("claude-c") {
@@ -413,7 +414,7 @@ pub fn is_ours_binary(command: &str) -> bool {
     }
     matches!(
         program_stem(command).as_deref(),
-        Some("kebacc") | Some("kebacc-switch")
+        Some("kebacc") | Some("kebacc-switch") | Some("kebacc-codex") | Some("kebacc-antigravity")
     )
 }
 
@@ -550,15 +551,19 @@ mod tests {
     }
 
     #[test]
-    fn kebacc_codex_is_not_this_binary() {
+    fn leftover_pool_binaries_are_still_ours() {
         assert!(is_ours_binary(
             "\"/tmp/kebacc\" auto -Provider claude -Hook"
         ));
         assert!(is_ours_binary(
             "\"C:/Users/me/.claude-tools/kebacc-switch.exe\" auto -Provider claude -Hook"
         ));
-        assert!(!is_ours_binary(
+        assert!(is_ours_binary(
             "\"/tmp/kebacc-codex\" auto -Provider codex -Hook"
         ));
+        assert!(is_ours_binary(
+            "\"/tmp/kebacc-antigravity\" auto -Provider antigravity -Hook"
+        ));
+        assert!(!is_ours_binary("starship prompt"));
     }
 }

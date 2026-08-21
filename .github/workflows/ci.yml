@@ -46,8 +46,6 @@ jobs:
         run: |
           set -eu
           cargo run --release -p kebacc -- --version
-          cargo run --release -p kebacc-codex -- --version
-          cargo run --release -p kebacc-antigravity -- --version
 
       # The version a plugin stamps into its marker file, the version the binary
       # reports, and the version cargo built are three copies of one number. A
@@ -67,46 +65,29 @@ jobs:
             echo "$2 VERSION says $crate"
           }
           check kebacc kebacc
-          check kebacc-codex kebacc-codex
-          check kebacc-antigravity kebacc-antigravity
 
       # The binary carries the slash commands inside it, one include_str! each,
       # so a command added to the directory and forgotten in COMMANDS ships as
       # a command nobody gets, and a name left in COMMANDS after its file is
-      # deleted fails the build. The -all pair lives in plugins/kebacc-all and
-      # every installer must carry it.
+      # deleted fails the build.
       - name: Every command on disk is one the binary carries
         if: runner.os != 'Windows'
         run: |
           set -eu
           bad=0
-          check_plugin() {
-            crate=$1
-            plugin=$2
-            carried=$(grep -o "commands/kebacc-[^\"]*\\.md" "crates/$crate/src/cmd/install.rs" |
-              sed 's|.*/||' | sort -u)
-            for file in plugins/$plugin/src/commands/*.md; do
-              name=${file##*/}
-              echo "$carried" | grep -qx "$name" ||
-                { echo "$name is on disk but not carried by $crate" >&2; bad=1; }
-            done
-            for name in $carried; do
-              [ -f "plugins/$plugin/src/commands/$name" ] ||
-                { echo "$name is carried by $crate but not on disk" >&2; bad=1; }
-            done
-          }
-          check_plugin kebacc kebacc
-          check_plugin kebacc-codex kebacc-codex
-          check_plugin kebacc-antigravity kebacc-antigravity
-          for all in plugins/kebacc-all/*.md; do
-            name=${all##*/}
-            for crate in kebacc kebacc-codex kebacc-antigravity; do
-              grep -q "plugins/kebacc-all/$name" "crates/$crate/src/cmd/install.rs" ||
-                { echo "$crate does not carry $name" >&2; bad=1; }
-            done
+          carried=$(grep -o "commands/kebacc-[^\"]*\\.md" "crates/kebacc/src/cmd/install.rs" |
+            sed 's|.*/||' | sort -u)
+          for file in plugins/kebacc/src/commands/*.md; do
+            name=${file##*/}
+            echo "$carried" | grep -qx "$name" ||
+              { echo "$name is on disk but not carried" >&2; bad=1; }
+          done
+          for name in $carried; do
+            [ -f "plugins/kebacc/src/commands/$name" ] ||
+              { echo "$name is carried but not on disk" >&2; bad=1; }
           done
           test "$bad" = 0
-          echo "every plugin command is carried, and so is the -all pair"
+          echo "every plugin command is carried"
 
       - name: The binaries install and uninstall themselves
         if: runner.os != 'Windows'
@@ -119,40 +100,33 @@ jobs:
           mkdir -p "$HOME" "$CLAUDE_CONFIG_DIR/commands"
           echo '{"model":"opus"}' > "$CLAUDE_CONFIG_DIR/settings.json"
 
-          # Names that belong to another half. Neither the install nor the
-          # uninstall of kebacc may take them.
-          for name in kebacc-list-codex.md kebacc-list-antigravity.md; do
-            printf 'another half wrote this\n' > "$CLAUDE_CONFIG_DIR/commands/$name"
-          done
-
-          target/release/kebacc install --status-line --auto-switch claude
-
-          for name in kebacc-list-codex.md kebacc-list-antigravity.md; do
-            test -f "$CLAUDE_CONFIG_DIR/commands/$name" || {
-              echo "the install took $name, which belongs to another half" >&2
-              exit 1
-            }
-          done
-          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-all.md"
-          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-auto-all.md"
+          target/release/kebacc install --status-line --auto-switch all
 
           test -x "$HOME/.claude-tools/kebacc"
           test "$(cat "$HOME/.claude-tools/.version")" = "$(cat plugins/kebacc/VERSION)"
           test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-claude.md"
+          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-codex.md"
+          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-antigravity.md"
+          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-all.md"
+          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-auto-all.md"
           grep -q '"model": *"opus"' "$CLAUDE_CONFIG_DIR/settings.json"
           grep -q 'statusLine' "$CLAUDE_CONFIG_DIR/settings.json"
           grep -q 'SessionStart' "$CLAUDE_CONFIG_DIR/settings.json"
           grep -q 'PreToolUse' "$CLAUDE_CONFIG_DIR/settings.json"
           grep -q -- '-Midtask' "$CLAUDE_CONFIG_DIR/settings.json"
+          grep -q -- '-Provider all' "$CLAUDE_CONFIG_DIR/settings.json"
           cat "$HOME"/.zshrc "$HOME"/.bashrc "$HOME"/.profile 2>/dev/null |
             grep -q 'kebacc account switcher'
           "$HOME/.claude-tools/kebacc" doctor > /dev/null
 
           printf 'retired\n' > "$CLAUDE_CONFIG_DIR/commands/kebacc-install-codex.md"
+          printf 'leftover\n' > "$HOME/.claude-tools/kebacc-codex"
+          chmod +x "$HOME/.claude-tools/kebacc-codex"
 
           "$HOME/.claude-tools/kebacc" uninstall --yes
 
           test ! -e "$HOME/.claude-tools/kebacc"
+          test ! -e "$HOME/.claude-tools/kebacc-codex"
           for file in plugins/kebacc/src/commands/*.md; do
             test ! -e "$CLAUDE_CONFIG_DIR/commands/${file##*/}" || {
               echo "the uninstall left ${file##*/} behind" >&2
@@ -163,70 +137,14 @@ jobs:
             echo "the uninstall left retired kebacc-install-codex.md behind" >&2
             exit 1
           }
-          # Last half out takes the -all pair with it.
           test ! -e "$CLAUDE_CONFIG_DIR/commands/kebacc-list-all.md"
           test ! -e "$CLAUDE_CONFIG_DIR/commands/kebacc-auto-all.md"
-          for name in kebacc-list-codex.md kebacc-list-antigravity.md; do
-            test -f "$CLAUDE_CONFIG_DIR/commands/$name" || {
-              echo "the uninstall took $name, which belongs to another half" >&2
-              exit 1
-            }
-          done
           ! grep -q 'statusLine' "$CLAUDE_CONFIG_DIR/settings.json"
           ! grep -q 'SessionStart' "$CLAUDE_CONFIG_DIR/settings.json"
           ! grep -q 'PreToolUse' "$CLAUDE_CONFIG_DIR/settings.json"
           ! cat "$HOME"/.zshrc "$HOME"/.bashrc "$HOME"/.profile 2>/dev/null |
             grep -q 'kebacc account switcher'
           echo 'kebacc installed and uninstalled cleanly'
-
-      - name: The three halves install side by side
-        if: runner.os != 'Windows'
-        run: |
-          set -eu
-          sandbox=$(mktemp -d)
-          export HOME="$sandbox/home"
-          export CLAUDE_CONFIG_DIR="$sandbox/claude"
-          export KEBACC_SWITCH_ACCOUNTS="$sandbox/accounts"
-          mkdir -p "$HOME" "$CLAUDE_CONFIG_DIR"
-          echo '{"model":"opus"}' > "$CLAUDE_CONFIG_DIR/settings.json"
-
-          target/release/kebacc install --no-profile-edit
-          target/release/kebacc-codex install --no-profile-edit
-          target/release/kebacc-antigravity install --no-profile-edit
-
-          test -x "$HOME/.claude-tools/kebacc"
-          test -x "$HOME/.claude-tools/kebacc-codex"
-          test -x "$HOME/.claude-tools/kebacc-antigravity"
-          test -f "$HOME/.claude-tools/.version"
-          test -f "$HOME/.claude-tools/.codex-version"
-          test -f "$HOME/.claude-tools/.antigravity-version"
-          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-claude.md"
-          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-codex.md"
-          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-antigravity.md"
-          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-all.md"
-          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-auto-all.md"
-
-          "$HOME/.claude-tools/kebacc" uninstall --yes --no-profile-edit
-          test ! -e "$HOME/.claude-tools/kebacc"
-          test -x "$HOME/.claude-tools/kebacc-codex"
-          test -x "$HOME/.claude-tools/kebacc-antigravity"
-          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-codex.md"
-          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-antigravity.md"
-          test ! -e "$CLAUDE_CONFIG_DIR/commands/kebacc-list-claude.md"
-          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-all.md"
-
-          "$HOME/.claude-tools/kebacc-codex" uninstall --yes --no-profile-edit
-          test ! -e "$HOME/.claude-tools/kebacc-codex"
-          test -x "$HOME/.claude-tools/kebacc-antigravity"
-          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-antigravity.md"
-          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-all.md"
-
-          "$HOME/.claude-tools/kebacc-antigravity" uninstall --yes --no-profile-edit
-          test ! -e "$HOME/.claude-tools/kebacc-antigravity"
-          test ! -e "$CLAUDE_CONFIG_DIR/commands/kebacc-list-antigravity.md"
-          test ! -e "$CLAUDE_CONFIG_DIR/commands/kebacc-list-all.md"
-          test ! -e "$CLAUDE_CONFIG_DIR/commands/kebacc-auto-all.md"
-          echo 'the three halves coexist, and the last uninstall takes -all'
 
       - name: The binary installs and uninstalls itself
         if: runner.os == 'Windows'
@@ -265,42 +183,28 @@ jobs:
           if ($line -ne 'starship prompt') { throw "the displaced status line did not come back: $line" }
           Write-Host 'installed and uninstalled cleanly, and starship has its status line back'
 
-      - name: The three halves install side by side
+      - name: One install writes every pool's commands and sweeps leftover binaries
         if: runner.os == 'Windows'
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $sandbox = Join-Path $env:RUNNER_TEMP ('coexist-' + [guid]::NewGuid().ToString('N'))
+          $sandbox = Join-Path $env:RUNNER_TEMP ('onebin-' + [guid]::NewGuid().ToString('N'))
           $tools = Join-Path $sandbox 'tools'
           $env:CLAUDE_CONFIG_DIR = Join-Path $sandbox 'claude'
           $env:KEBACC_SWITCH_ACCOUNTS = Join-Path $sandbox 'accounts'
-          New-Item -ItemType Directory -Path $env:CLAUDE_CONFIG_DIR -Force | Out-Null
+          New-Item -ItemType Directory -Path $env:CLAUDE_CONFIG_DIR, $tools -Force | Out-Null
           '{}' | Set-Content -LiteralPath (Join-Path $env:CLAUDE_CONFIG_DIR 'settings.json')
+          Set-Content -LiteralPath (Join-Path $tools 'kebacc-codex.exe') -Value 'leftover'
 
           target/release/kebacc.exe install -ToolsDir $tools -NoProfileEdit
           if ($LASTEXITCODE -ne 0) { throw "kebacc install exited $LASTEXITCODE" }
-          target/release/kebacc-codex.exe install -ToolsDir $tools -NoProfileEdit
-          if ($LASTEXITCODE -ne 0) { throw "kebacc-codex install exited $LASTEXITCODE" }
-          target/release/kebacc-antigravity.exe install -ToolsDir $tools -NoProfileEdit
-          if ($LASTEXITCODE -ne 0) { throw "kebacc-antigravity install exited $LASTEXITCODE" }
 
-          foreach ($name in 'kebacc.exe', 'kebacc-codex.exe', 'kebacc-antigravity.exe', '.version', '.codex-version', '.antigravity-version') {
-            if (-not (Test-Path -LiteralPath (Join-Path $tools $name))) { throw "$name is missing" }
-          }
+          if (Test-Path -LiteralPath (Join-Path $tools 'kebacc-codex.exe')) { throw 'leftover kebacc-codex.exe was not swept' }
           $commands = Join-Path $env:CLAUDE_CONFIG_DIR 'commands'
           foreach ($name in 'kebacc-list-claude.md', 'kebacc-list-codex.md', 'kebacc-list-antigravity.md', 'kebacc-list-all.md') {
             if (-not (Test-Path -LiteralPath (Join-Path $commands $name))) { throw "$name is missing" }
           }
-
-          & (Join-Path $tools 'kebacc.exe') uninstall -ToolsDir $tools -NoProfileEdit -Yes
-          if ($LASTEXITCODE -ne 0) { throw "kebacc uninstall exited $LASTEXITCODE" }
-          $deadline = (Get-Date).AddSeconds(30)
-          $claude = Join-Path $tools 'kebacc.exe'
-          while ((Test-Path -LiteralPath $claude) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }
-          if (Test-Path -LiteralPath $claude) { throw 'kebacc.exe is still there' }
-          if (-not (Test-Path -LiteralPath (Join-Path $tools 'kebacc-codex.exe'))) { throw 'codex was taken with claude' }
-          if (-not (Test-Path -LiteralPath (Join-Path $commands 'kebacc-list-all.md'))) { throw '-all was taken while siblings remain' }
-          Write-Host 'the three halves coexist on Windows'
+          Write-Host 'one install carries every pool'
 
       - name: The published release installs and runs
         if: runner.os != 'Windows'

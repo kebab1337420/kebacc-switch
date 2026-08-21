@@ -54,14 +54,24 @@ fn read_creds_raw(provider: &Provider) -> Option<String> {
         let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
         return (!text.is_empty()).then_some(text);
     }
-    let text = std::fs::read_to_string(&file).ok()?;
-    let text = text.trim().to_string();
-    (!text.is_empty()).then_some(text)
+    if let Ok(text) = std::fs::read_to_string(&file) {
+        let text = text.trim().to_string();
+        if !text.is_empty() {
+            return Some(text);
+        }
+    }
+    if provider.id == ProviderId::Antigravity {
+        return crate::keyring::read();
+    }
+    None
 }
 
 pub fn set_creds_raw(provider: &Provider, raw: &str) -> std::io::Result<()> {
     forget(provider);
     let file = provider.cred_file();
+    if let Some(dir) = file.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
     jsonio::write_text(&file, raw)?;
     if provider.uses_keychain {
         if let Some(service) = provider.keychain_service {
@@ -85,6 +95,11 @@ pub fn set_creds_raw(provider: &Provider, raw: &str) -> std::io::Result<()> {
             );
         }
     }
+    if provider.id == ProviderId::Antigravity {
+        if let Err(problem) = crate::keyring::write(raw) {
+            crate::usage::debug(&format!("credential store not written: {problem}"));
+        }
+    }
     Ok(())
 }
 
@@ -102,8 +117,82 @@ pub fn identity(provider: &Provider) -> Option<Value> {
 }
 
 fn read_identity(provider: &Provider) -> Option<Value> {
-    let config = jsonio::read(&provider.config_file())?;
-    jsonio::obj(&config, "oauthAccount")
+    match provider.id {
+        ProviderId::Claude => {
+            let config = jsonio::read(&provider.config_file())?;
+            jsonio::obj(&config, "oauthAccount")
+        }
+        ProviderId::Codex => {
+            let raw = creds_raw(provider)?;
+            let creds: Value = serde_json::from_str(&raw).ok()?;
+            codex_identity(&creds)
+        }
+        ProviderId::Antigravity => {
+            let raw = creds_raw(provider)?;
+            let creds: Value = serde_json::from_str(&raw).ok()?;
+            antigravity_identity(&creds)
+        }
+    }
+}
+
+pub fn codex_identity(creds: &Value) -> Option<Value> {
+    let tokens = creds.get("tokens").filter(|v| !v.is_null())?;
+    let mut email = None;
+    let mut uuid = jsonio::str_of(tokens, "account_id");
+    if let Some(claims) = jsonio::str_of(tokens, "id_token").and_then(|t| jsonio::jwt_payload(&t)) {
+        email = jsonio::str_of(&claims, "email");
+        if uuid.is_none() {
+            uuid = claims
+                .get("https://api.openai.com/auth")
+                .and_then(|auth| jsonio::str_of(auth, "chatgpt_account_id"));
+        }
+    }
+    if email.is_none() && uuid.is_none() {
+        return None;
+    }
+    Some(json!({ "emailAddress": email, "accountUuid": uuid }))
+}
+
+pub fn token_of(creds: &Value) -> Option<&Value> {
+    match creds.get("token").filter(|v| !v.is_null()) {
+        Some(token) => Some(token),
+        None => creds.get("refresh_token").is_some().then_some(creds),
+    }
+}
+
+pub fn refresh_token(creds: &Value) -> Option<String> {
+    jsonio::str_of(token_of(creds)?, "refresh_token")
+}
+
+pub fn antigravity_identity(creds: &Value) -> Option<Value> {
+    let refresh = refresh_token(creds)?;
+    let mut email = jsonio::str_of(token_of(creds)?, "id_token")
+        .and_then(|t| jsonio::jwt_payload(&t))
+        .and_then(|claims| jsonio::str_of(&claims, "email"));
+    if email.is_none() {
+        email = email_from_pool(&refresh);
+    }
+    if email.is_none() {
+        email = crate::usage::email_from_google(creds);
+    }
+    Some(json!({
+        "emailAddress": email,
+        "accountUuid": crate::pool::short_hash(&refresh),
+    }))
+}
+
+fn email_from_pool(refresh: &str) -> Option<String> {
+    let store = crate::provider::spec(ProviderId::Antigravity).store;
+    let snapshots = crate::pool::plain_snapshots(&store)?;
+    snapshots.iter().find_map(|(_, snapshot)| {
+        let creds: Value = serde_json::from_str(&crate::pool::snapshot_creds(snapshot)?).ok()?;
+        if refresh_token(&creds)? != refresh {
+            return None;
+        }
+        crate::pool::identity_of(snapshot)
+            .and_then(|account| jsonio::str_of(&account, "emailAddress"))
+            .or_else(|| jsonio::str_of(snapshot, "email"))
+    })
 }
 
 pub fn set_identity(provider: &Provider, identity: &Value) {
@@ -246,7 +335,7 @@ pub fn backup_creds(provider: &Provider) {
         None => (format!("creds-{stamp}.json"), raw),
     };
     let file = dir.join(name);
-    if std::fs::write(&file, body).is_err() {
+    if jsonio::write_private(&file, body.as_bytes()).is_err() {
         return;
     }
     crate::provider::protect_file(&file);
@@ -434,8 +523,10 @@ pub fn activate(provider: &Provider, entry: &crate::pool::Entry) -> Result<Activ
 
         set_creds_raw(provider, &creds)
             .map_err(|e| format!("Could not write the credentials: {e}"))?;
-        if let Some(identity) = entry.identity.as_ref() {
-            set_identity(provider, identity);
+        if provider.id == ProviderId::Claude {
+            if let Some(identity) = entry.identity.as_ref() {
+                set_identity(provider, identity);
+            }
         }
         remember_active(provider, &entry.email, &creds);
         crate::log::line(&format!("switch: {} is now the live login", entry.email));

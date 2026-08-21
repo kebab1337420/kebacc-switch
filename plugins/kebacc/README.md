@@ -1,7 +1,7 @@
 # Kebacc switch
 
-Several logins for Claude Code, saved on this machine, and one
-command to move between them when one runs out of quota.
+Several logins for Claude Code, Codex and Antigravity, saved on this
+machine, and one command to move between them when one runs out of quota.
 
 It is a Rust binary: the crate is `crates/kebacc` at the root of this
 repository, and the binary installs itself — `kebacc install` puts it,
@@ -34,8 +34,8 @@ own runtime first.
 - **update** — replaces the installed binary with the newest release.
   `-Check` only says whether one is out.
 
-Every command takes `-Provider claude`, which is also the default
-to run once per provider.
+`list`, `auto` and `doctor` default to `-Provider all`. `add`, `switch` and
+`remove` default to Claude and refuse `all`.
 
 ```
 kebacc list -Provider all
@@ -84,15 +84,12 @@ The slash commands `/kebacc-auto-claude` and `/kebacc-auto-toggle` are that
 command; switching the live login is `/kebacc-switch-claude`, and nothing
 else.
 
-Two flags for a machine that carries the Codex half as well:
+Two flags for a machine that already has a pool armed:
 
 - `-Merge` adds this pool to whatever is already armed instead of replacing it,
-  so installing this plugin cannot narrow a hook somebody else widened. The
-  installers use it.
-- `-Drop` takes this pool out. This build carries one pool, so what is left is
-  nothing it could be armed on and the hooks go — the other half's hooks run its
-  own binary, under its own name, and are never read or written here. The
-  uninstallers use it.
+  so `/kebacc-auto-codex` cannot drop Claude. The per-pool slash commands use it.
+- `-Drop` takes this pool out. What is left stays armed. If nothing is left the
+  hooks go.
 
 `kebacc install -AutoSwitch` writes a pair of hooks into
 `~/.claude/settings.json`:
@@ -168,6 +165,8 @@ root [`README.md`](../../README.md) lists every one of them.
 | --- | --- |
 | `~/.claude-tools/` | the binary, and `.version` |
 | `~/.kebacc-switch-accounts/` | saved Claude Code logins |
+| `~/.kebacc-switch-codex-accounts/` | saved Codex logins |
+| `~/.kebacc-switch-antigravity-accounts/` | saved Antigravity logins |
 | `~/.claude/commands/kebacc-*.md` | the slash commands |
 | `~/.kebacc-switch/` | stamps, locks and caches (`KEBACC_SWITCH_STATE_DIR` moves it) |
 | `~/.kebacc-switch/kebacc.log` | what every switch did, rotated at 512 KB (`KEBACC_SWITCH_LOG=off` stops it) |
@@ -253,14 +252,13 @@ Linux. Download the one for the machine and ask it to install itself.
 src/commands/*.md               the slash commands, carried by the binary
                                  as include_str!, one per entry in COMMANDS
 VERSION                         the number the install stamps into .version
-crates/kebacc/src/main.rs    the entry point, and `-Provider all`
+crates/kebacc/src/main.rs       the entry point, and `-Provider`
 crates/kebacc/src/provider.rs   what each CLI keeps on disk
-crates/kebacc/src/pool.rs    the trust stamps
-crates/kebacc/src/seal.rs    DPAPI, Keychain, libsecret
-crates/kebacc/src/usage.rs   the quota windows and their cache
-crates/kebacc/src/live.rs    the credentials the CLI is holding
-crates/kebacc/src/cmd/       one file per command, status line included
-                                 — install, uninstall and install-codex too
+crates/kebacc/src/pool.rs       the trust stamps
+crates/kebacc-core/src/seal.rs  DPAPI, Keychain, libsecret
+crates/kebacc/src/usage.rs      the quota windows and their cache
+crates/kebacc/src/live.rs       the credentials the CLI is holding
+crates/kebacc/src/cmd/          one file per command, status line included
 ```
 
 The crate lives in the workspace at the repository root rather than under

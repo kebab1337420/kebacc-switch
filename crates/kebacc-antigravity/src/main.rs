@@ -4,16 +4,31 @@ mod keyring;
 mod live;
 mod lock;
 mod pool;
-mod proc;
+mod proc {
+    pub use kebacc_core::proc::*;
+}
 mod provider;
-mod seal;
-mod term;
+mod seal {
+    pub use kebacc_core::seal::*;
+}
+mod term {
+    pub use kebacc_core::term::*;
+}
 mod usage;
 
 use cmd::Options;
 use term::{say, Color};
 
+/// Keychain / libsecret account this build stores the seal key under.
+/// Saved logins on existing machines only open if this stays this string.
+const SEAL_ACCOUNT: &str = "kebacc-antigravity";
+
+fn init() {
+    kebacc_core::seal::set_secret_account(SEAL_ACCOUNT);
+}
+
 fn main() {
+    init();
     cmd::update::sweep();
     let args: Vec<String> = std::env::args().skip(1).collect();
     std::process::exit(dispatch(&args));
@@ -263,4 +278,17 @@ fn parse(tokens: &[String]) -> Result<(String, Options), String> {
         }
     }
     Ok((provider, options))
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn this_build_seals_under_the_historical_keychain_account() {
+        super::init();
+        assert_eq!(super::SEAL_ACCOUNT, "kebacc-antigravity");
+        assert_eq!(
+            kebacc_core::seal::secret_account(),
+            Some("kebacc-antigravity")
+        );
+    }
 }

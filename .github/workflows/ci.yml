@@ -35,7 +35,7 @@ jobs:
         run: cargo build --release -p kebacc-antigravity
 
       - name: Test
-        run: cargo test --release -p kebacc-antigravity
+        run: cargo test --release --workspace
 
       # Formatting does not vary by platform, so this runs on one OS only.
       - name: Format
@@ -43,7 +43,7 @@ jobs:
         run: cargo fmt --all -- --check
 
       - name: Clippy
-        run: cargo clippy --release --all-targets -p kebacc-antigravity -- -D warnings
+        run: cargo clippy --release --all-targets --workspace -- -D warnings
 
       # A binary that will not start says so here rather than on a user's
       # machine after the release is out.

@@ -8,7 +8,7 @@ publish = false
 
 [dependencies]
 serde_json = { version = "1", features = ["preserve_order"] }
-base64 = "0.22"
+base64 = "0.23"
 getrandom = "0.4"
 aes-gcm = "0.10"
 

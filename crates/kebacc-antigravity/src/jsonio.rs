@@ -65,6 +65,12 @@ fn replace_file(from: &Path, to: &Path) -> std::io::Result<()> {
 }
 
 fn write_private(path: &Path, text: &str) -> std::io::Result<()> {
+    write_private_bytes(path, text.as_bytes())
+}
+
+/// Create `path` and write `bytes` into it. On Unix the file is `0o600` from
+/// the first byte, so a secret is never world-readable between create and chmod.
+pub fn write_private_bytes(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
 
     let mut options = std::fs::OpenOptions::new();
@@ -75,7 +81,7 @@ fn write_private(path: &Path, text: &str) -> std::io::Result<()> {
         options.mode(0o600);
     }
     let mut file = options.open(path)?;
-    file.write_all(text.as_bytes())?;
+    file.write_all(bytes)?;
     file.sync_all()
 }
 
@@ -138,5 +144,28 @@ mod tests {
         let got = std::fs::read_to_string(&path).expect("read back");
         let _ = std::fs::remove_file(&path);
         assert_eq!(got, "second");
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn write_private_bytes_creates_the_file_at_0600() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let path = std::env::temp_dir().join(format!(
+            "kebacc-antigravity-jsonio-mode-{}-{}.bin",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        write_private_bytes(&path, b"secret").expect("write");
+        let mode = std::fs::metadata(&path)
+            .expect("metadata")
+            .permissions()
+            .mode()
+            & 0o777;
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(mode, 0o600);
     }
 }

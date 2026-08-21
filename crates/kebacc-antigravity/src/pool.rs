@@ -87,9 +87,10 @@ impl<'a> Pool<'a> {
         crate::provider::protect_dir(&self.provider.store);
         let key = seal::random_bytes(32);
         if cfg!(windows) {
-            std::fs::write(&path, seal::wrap_bytes(&key)?).ok()?;
+            jsonio::write_private_bytes(&path, &seal::wrap_bytes(&key)?).ok()?;
         } else {
-            std::fs::write(&path, seal::protect(&B64.encode(&key))?.as_bytes()).ok()?;
+            jsonio::write_private_bytes(&path, seal::protect(&B64.encode(&key))?.as_bytes())
+                .ok()?;
         }
         crate::provider::protect_file(&path);
         Some(key)

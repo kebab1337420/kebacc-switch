@@ -1,8 +1,17 @@
 use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
+use std::time::Duration;
 
 pub const PREFIX: &str = "ccx1:";
 const SECRET_ACCOUNT: &str = "kebacc-antigravity";
+
+/// Deadline for `security` and `secret-tool`. Either can wait forever for a
+/// prompt that nobody will answer: a Linux box over SSH with no D-Bus session,
+/// or a locked keyring. This path runs from a session-start hook and a status
+/// line that redraws several times a minute, so three seconds is long enough
+/// for a local lookup and short enough that a hung probe does not freeze the
+/// terminal.
+const KEYRING_PROBE_DEADLINE: Duration = Duration::from_secs(3);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Backend {
@@ -96,9 +105,8 @@ fn secret_key(create: bool) -> Option<Vec<u8>> {
         _ => return None,
     };
 
-    let mut reader = std::process::Command::new(tool);
-    if let Ok(out) = crate::proc::hidden(&mut reader).args(&read).output() {
-        let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if let Some(out) = timed_stdout(tool, &read) {
+        let text = String::from_utf8_lossy(&out).trim().to_string();
         if !text.is_empty() {
             if let Ok(key) = B64.decode(text.as_bytes()) {
                 return Some(key);
@@ -143,7 +151,54 @@ fn write_stdin(tool: &str, args: &[&str], text: &str) -> bool {
         let _ = stdin.write_all(text.as_bytes());
     }
     child.stdin.take();
-    child.wait().map(|s| s.success()).unwrap_or(false)
+    wait_with_deadline(&mut child)
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Piped stdout, then read after wait. `.output()` cannot be timed out. The
+/// payload is a 32-byte key in base64, so the pipe cannot fill before the
+/// child exits.
+fn timed_stdout(tool: &str, args: &[&str]) -> Option<Vec<u8>> {
+    use std::io::Read;
+
+    let mut reader = std::process::Command::new(tool);
+    let mut child = crate::proc::hidden(&mut reader)
+        .args(args)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .ok()?;
+    wait_with_deadline(&mut child)?;
+    let mut buf = Vec::new();
+    if let Some(mut pipe) = child.stdout.take() {
+        let _ = pipe.read_to_end(&mut buf);
+    }
+    Some(buf)
+}
+
+fn wait_with_deadline(child: &mut std::process::Child) -> Option<std::process::ExitStatus> {
+    use std::time::Instant;
+
+    let deadline = Instant::now() + KEYRING_PROBE_DEADLINE;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Some(status),
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return None;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    }
 }
 
 pub fn wrap_bytes(plain: &[u8]) -> Option<Vec<u8>> {

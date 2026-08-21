@@ -171,7 +171,7 @@ pub fn backup_creds(provider: &Provider) {
         None => (format!("creds-{stamp}.json"), raw),
     };
     let file = dir.join(name);
-    if std::fs::write(&file, body).is_err() {
+    if jsonio::write_private_bytes(&file, body.as_bytes()).is_err() {
         return;
     }
     crate::provider::protect_file(&file);

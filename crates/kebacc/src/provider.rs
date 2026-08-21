@@ -5,8 +5,6 @@ const PROTECTED_MARK: &str = ".protected";
 const AGY_SESSION_DIR: [&str; 2] = [".gemini", "antigravity-cli"];
 const AGY_TOKEN_FILE: &str = "antigravity-oauth-token";
 
-pub const PROVIDER_IDS: [&str; 3] = ["claude", "codex", "antigravity"];
-
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum ProviderId {
     Claude,
@@ -39,26 +37,226 @@ impl ProviderId {
     }
 }
 
-/// What `-Provider` asked for: one pool, or every pool this binary carries.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum Wanted {
+/// Which pools a command should touch.
+///
+/// No flag means every pool for list/auto/doctor, and an error for
+/// add/switch/remove. `-claude -ag` is those two, not a silent `all`.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct Wanted {
+    ids: Vec<ProviderId>,
+    all: bool,
+    off: bool,
+}
+
+pub enum PoolName {
     All,
+    Off,
     One(ProviderId),
 }
 
 impl Wanted {
-    pub fn ids(self) -> Vec<ProviderId> {
-        match self {
-            Wanted::All => ProviderId::ALL.to_vec(),
-            Wanted::One(id) => vec![id],
+    pub fn unspecified() -> Self {
+        Self::default()
+    }
+
+    pub fn all() -> Self {
+        Self {
+            ids: Vec::new(),
+            all: true,
+            off: false,
         }
     }
 
-    pub fn as_str(self) -> &'static str {
-        match self {
-            Wanted::All => "all",
-            Wanted::One(id) => id.as_str(),
+    pub fn off() -> Self {
+        Self {
+            ids: Vec::new(),
+            all: false,
+            off: true,
         }
+    }
+
+    pub fn one(id: ProviderId) -> Self {
+        Self {
+            ids: vec![id],
+            all: false,
+            off: false,
+        }
+    }
+
+    pub fn is_unspecified(&self) -> bool {
+        !self.all && !self.off && self.ids.is_empty()
+    }
+
+    pub fn is_off(&self) -> bool {
+        self.off
+    }
+
+    pub fn is_all(&self) -> bool {
+        self.all || self.ids.len() == ProviderId::ALL.len()
+    }
+
+    pub fn add(&mut self, id: ProviderId) {
+        self.off = false;
+        if self.all {
+            return;
+        }
+        if !self.ids.contains(&id) {
+            self.ids.push(id);
+            self.ids.sort_by_key(|pool| {
+                ProviderId::ALL
+                    .iter()
+                    .position(|known| known == pool)
+                    .unwrap_or(99)
+            });
+        }
+        if self.ids.len() == ProviderId::ALL.len() {
+            self.all = true;
+            self.ids.clear();
+        }
+    }
+
+    pub fn mark_all(&mut self) {
+        self.all = true;
+        self.off = false;
+        self.ids.clear();
+    }
+
+    pub fn mark_off(&mut self) {
+        *self = Self::off();
+    }
+
+    pub fn remove(&mut self, id: ProviderId) {
+        if self.off {
+            return;
+        }
+        if self.all {
+            self.all = false;
+            self.ids = ProviderId::ALL
+                .iter()
+                .copied()
+                .filter(|pool| *pool != id)
+                .collect();
+            return;
+        }
+        self.ids.retain(|pool| *pool != id);
+    }
+
+    pub fn union(&self, other: &Wanted) -> Wanted {
+        if self.off {
+            return other.clone();
+        }
+        if other.off {
+            return self.clone();
+        }
+        if self.is_all() || other.is_all() {
+            return Wanted::all();
+        }
+        let mut out = self.clone();
+        for id in &other.ids {
+            out.add(*id);
+        }
+        out
+    }
+
+    pub fn minus(&self, other: &Wanted) -> Wanted {
+        if other.is_all() || other.off || other.is_unspecified() {
+            return Wanted::off();
+        }
+        let mut out = if self.is_unspecified() || self.is_all() {
+            let mut every = Wanted::unspecified();
+            for id in ProviderId::ALL {
+                every.add(id);
+            }
+            every
+        } else {
+            self.clone()
+        };
+        for id in &other.ids {
+            out.remove(*id);
+        }
+        if out.ids.is_empty() && !out.all {
+            Wanted::off()
+        } else {
+            out
+        }
+    }
+
+    pub fn apply_name(&mut self, name: PoolName) {
+        match name {
+            PoolName::All => self.mark_all(),
+            PoolName::Off => self.mark_off(),
+            PoolName::One(id) => self.add(id),
+        }
+    }
+
+    /// Pools this command runs on. Unspecified means every pool.
+    pub fn ids(&self) -> Vec<ProviderId> {
+        if self.off {
+            Vec::new()
+        } else if self.is_all() || self.is_unspecified() {
+            ProviderId::ALL.to_vec()
+        } else {
+            self.ids.clone()
+        }
+    }
+
+    pub fn exactly_one(&self) -> Option<ProviderId> {
+        if self.off || self.all {
+            return None;
+        }
+        if self.ids.len() == 1 {
+            Some(self.ids[0])
+        } else {
+            None
+        }
+    }
+
+    pub fn flag_of(id: ProviderId) -> &'static str {
+        match id {
+            ProviderId::Claude => "-claude",
+            ProviderId::Codex => "-codex",
+            ProviderId::Antigravity => "-ag",
+        }
+    }
+
+    /// Flags to hand a child. Empty when every pool, which is the default.
+    pub fn flags(&self) -> Vec<String> {
+        if self.off {
+            return vec!["-off".into()];
+        }
+        if self.is_all() || self.is_unspecified() {
+            return Vec::new();
+        }
+        self.ids
+            .iter()
+            .map(|id| Self::flag_of(*id).to_string())
+            .collect()
+    }
+
+    pub fn flag_clause(&self) -> String {
+        let flags = self.flags();
+        if flags.is_empty() {
+            String::new()
+        } else {
+            format!(" {}", flags.join(" "))
+        }
+    }
+
+    pub fn display(&self) -> String {
+        if self.off {
+            return "off".into();
+        }
+        if self.is_all() || self.is_unspecified() {
+            return "all".into();
+        }
+        self.ids
+            .iter()
+            .map(|id| match id {
+                ProviderId::Antigravity => "ag",
+                other => other.as_str(),
+            })
+            .collect::<Vec<_>>()
+            .join("+")
     }
 }
 
@@ -112,28 +310,26 @@ pub fn claude_config_dir() -> PathBuf {
     .clone()
 }
 
-pub fn is_all(id: &str) -> bool {
-    matches!(
-        id.trim().to_ascii_lowercase().as_str(),
-        "all" | "every" | "*"
-    )
-}
-
-pub fn resolve(id: &str) -> Result<Wanted, String> {
-    let key = id.trim().to_ascii_lowercase();
-    if key.is_empty() || is_all(&key) {
-        return Ok(Wanted::All);
+pub fn parse_pool_name(raw: &str) -> Option<PoolName> {
+    let key = raw
+        .trim()
+        .trim_start_matches('-')
+        .replace(['-', '_'], "")
+        .to_ascii_lowercase();
+    if key.is_empty() {
+        return None;
     }
     match key.as_str() {
-        "claude" | "claude-code" | "claudecode" | "cc" | "anthropic" => {
-            Ok(Wanted::One(ProviderId::Claude))
+        "all" | "every" => Some(PoolName::All),
+        "off" | "none" | "no" => Some(PoolName::Off),
+        "claude" | "claudecode" | "cl" | "cc" | "anthropic" => {
+            Some(PoolName::One(ProviderId::Claude))
         }
-        "codex" | "openai" | "chatgpt" | "gpt" => Ok(Wanted::One(ProviderId::Codex)),
-        "antigravity" | "agy" | "google" | "gemini" => Ok(Wanted::One(ProviderId::Antigravity)),
-        _ => Err(format!(
-            "Unknown provider '{id}'. Known providers: {}, all.",
-            PROVIDER_IDS.join(", ")
-        )),
+        "codex" | "cx" | "openai" | "chatgpt" | "gpt" => Some(PoolName::One(ProviderId::Codex)),
+        "antigravity" | "ag" | "agy" | "google" | "gemini" => {
+            Some(PoolName::One(ProviderId::Antigravity))
+        }
+        _ => None,
     }
 }
 
@@ -339,4 +535,56 @@ fn restrict(path: &Path, dir: bool) {
     use std::os::unix::fs::PermissionsExt;
     let mode = if dir { 0o700 } else { 0o600 };
     let _ = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{parse_pool_name, PoolName, ProviderId, Wanted};
+
+    #[test]
+    fn short_and_full_names_are_the_same_pool() {
+        assert!(matches!(
+            parse_pool_name("-ag"),
+            Some(PoolName::One(ProviderId::Antigravity))
+        ));
+        assert!(matches!(
+            parse_pool_name("antigravity"),
+            Some(PoolName::One(ProviderId::Antigravity))
+        ));
+        assert!(matches!(
+            parse_pool_name("-cl"),
+            Some(PoolName::One(ProviderId::Claude))
+        ));
+        assert!(matches!(
+            parse_pool_name("-cx"),
+            Some(PoolName::One(ProviderId::Codex))
+        ));
+    }
+
+    #[test]
+    fn generated_flags_use_the_short_name_only_when_the_full_one_is_long() {
+        assert_eq!(Wanted::flag_of(ProviderId::Claude), "-claude");
+        assert_eq!(Wanted::flag_of(ProviderId::Codex), "-codex");
+        assert_eq!(Wanted::flag_of(ProviderId::Antigravity), "-ag");
+        assert!(Wanted::all().flags().is_empty());
+        assert_eq!(Wanted::one(ProviderId::Antigravity).flags(), vec!["-ag"]);
+    }
+
+    #[test]
+    fn two_pools_stay_two_pools() {
+        let mut wanted = Wanted::one(ProviderId::Claude);
+        wanted.add(ProviderId::Antigravity);
+        assert_eq!(wanted.display(), "claude+ag");
+        assert_eq!(wanted.flags(), vec!["-claude", "-ag"]);
+    }
+
+    #[test]
+    fn naming_every_pool_collapses_to_all() {
+        let mut wanted = Wanted::unspecified();
+        wanted.add(ProviderId::Claude);
+        wanted.add(ProviderId::Codex);
+        wanted.add(ProviderId::Antigravity);
+        assert!(wanted.is_all());
+        assert!(wanted.flags().is_empty());
+    }
 }

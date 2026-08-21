@@ -17,10 +17,11 @@ pub mod wire;
 
 use crate::live;
 use crate::pool::Entry;
-use crate::provider::Provider;
+use crate::provider::{Provider, Wanted};
 
 #[derive(Default)]
 pub struct Options {
+    pub wanted: Wanted,
     pub email: Option<String>,
     pub quiet: bool,
     pub hook: bool,

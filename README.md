@@ -17,20 +17,23 @@ the one you are on runs out of quota. Built for
 ## What it is
 
 One Rust binary and one Claude Code plugin. Claude Code, Codex and Antigravity
-each keep their own pool of sealed logins. You install once, then pick the pool
-with `-Provider`:
+each keep their own pool of sealed logins. You install once, then name the pool
+with a flag:
 
 ```
 kebacc install
 kebacc list
-kebacc switch -Provider claude
-kebacc switch -Provider codex
-kebacc switch -Provider antigravity
+kebacc list -ag
+kebacc switch -claude
+kebacc switch -codex
+kebacc add -ag
 ```
 
-`list`, `auto` and `doctor` default to every pool. `add`, `switch` and `remove`
-need a single pool and default to Claude. Uninstall takes the binary and the
-slash commands. The saved logins stay until you pass `-Pool`.
+Full name or short: `-claude`/`-cl`, `-codex`/`-cx`, `-antigravity`/`-ag`, `-all`.
+`list`, `auto` and `doctor` with no flag mean every pool. `add`, `switch` and
+`remove` need one. Uninstall takes the binary and the slash commands. The saved
+logins stay until you pass `-Pool`. An install or update rewrites leftover
+`-Provider` hooks and sweeps the old per-pool slash commands.
 
 ---
 
@@ -105,63 +108,21 @@ same flag, so a habit from either shell works:
 
 ## Slash commands
 
-Everything the plugins install lives under the `/kebacc-` prefix.
-
-### Accounts
+Seven commands. The pool is an argument, same flags as the binary.
 
 | Command | What it does |
 | --- | --- |
-| `/kebacc-add-claude` | save the Claude Code login you are on right now |
-| `/kebacc-add-codex` | save the Codex login you are on right now |
-| `/kebacc-add-antigravity` | save the Antigravity login you are on right now |
-| `/kebacc-remove-claude` | forget a saved Claude Code account |
-| `/kebacc-remove-codex` | forget a saved Codex account |
-| `/kebacc-remove-antigravity` | forget a saved Antigravity account |
-
-### Looking
-
-| Command | What it does |
-| --- | --- |
-| `/kebacc-list-claude` | the saved Claude Code accounts |
-| `/kebacc-list-codex` | the saved Codex accounts |
-| `/kebacc-list-antigravity` | the saved Antigravity accounts |
-| `/kebacc-list-all` | every pool |
+| `/kebacc-list` | saved accounts. `/kebacc-list -ag` for Antigravity only |
+| `/kebacc-add` | save the login you are on. Needs `-ag`, `-claude` or `-codex` |
+| `/kebacc-switch` | put a saved login in front |
+| `/kebacc-remove` | forget a saved login |
+| `/kebacc-auto` | arm the auto-switch. `/kebacc-auto off` disarms it |
+| `/kebacc-doctor` | check the install and the pools |
+| `/kebacc-update` | install the newest release |
 
 A list command always asks the API rather than reading the cache, and always
-prints both quota windows with the time left until each one resets.
-
-### Moving
-
-| Command | What it does |
-| --- | --- |
-| `/kebacc-switch-claude` | change which saved Claude Code login the CLI uses |
-| `/kebacc-switch-codex` | change which saved Codex login the CLI uses |
-| `/kebacc-switch-antigravity` | change which saved Antigravity login the CLI uses |
-
-### The auto-switch
-
-| Command | What it does |
-| --- | --- |
-| `/kebacc-auto-claude` | arm the Claude auto-switch, session start and mid-task |
-| `/kebacc-auto-codex` | arm the Codex auto-switch |
-| `/kebacc-auto-antigravity` | arm the Antigravity auto-switch |
-| `/kebacc-auto-all` | arm every pool |
-| `/kebacc-auto-toggle` | arm or disarm both auto hooks |
-
-None of these changes the account in use. Arming decides what the next
-sessions open on. Only the `/kebacc-switch-*` commands move the login you are
-on right now.
-
-### Upkeep
-
-| Command | What it does |
-| --- | --- |
-| `/kebacc-doctor` | check the Claude install, the pool and the seals |
-| `/kebacc-doctor-codex` | check the Codex install |
-| `/kebacc-doctor-antigravity` | check the Antigravity install |
-| `/kebacc-update` | install the newest release |
-| `/kebacc-update-codex` | same updater, kept so the old command still works |
-| `/kebacc-update-antigravity` | same updater |
+prints both quota windows with the time left until each one resets. `/kebacc-auto`
+only writes hooks; `/kebacc-switch` is what moves the login you are on.
 
 ---
 
@@ -170,23 +131,24 @@ on right now.
 The slash commands are thin wrappers; the binary takes the same work directly.
 
 ```sh
-kebacc add     -Provider claude               # save the current login
-kebacc list    -Provider all -Refresh -Countdown
-kebacc switch  -Provider claude -Email you@example.com
-kebacc auto    -Provider all                  # switch only if capped
-kebacc arm     -Provider claude                # arm the auto-switch, change nothing now
-kebacc arm     -Provider claude -Merge         # arm it without narrowing what is already armed
-kebacc arm     -Provider claude -Drop          # take this pool out again
-kebacc arm     -Provider off                   # disarm it
-kebacc doctor  -Provider all
-kebacc doctor  -Provider claude -Renew        # ask for a new token pair for the logins whose own has run out
-kebacc refresh -Provider all                  # re-read the quotas, print nothing
+kebacc add -ag                          # save the current Antigravity login
+kebacc list -Refresh -Countdown         # every pool
+kebacc list -ag
+kebacc switch -claude -Email you@example.com
+kebacc auto                             # switch only if capped, every pool
+kebacc arm -ag                          # arm Antigravity, change nothing now
+kebacc arm -claude -Merge               # add Claude to whatever is already armed
+kebacc arm -ag -Drop                    # take Antigravity out, leave the rest
+kebacc arm off
+kebacc doctor
+kebacc doctor -claude -Renew            # ask for a new token pair for the logins whose own has run out
+kebacc refresh -codex                   # re-read that pool, print nothing
 kebacc update
 ```
 
-`-Provider` takes `claude`, `codex`, `antigravity` or `all`. `list`, `auto`,
-`doctor`, `watch` and `refresh` default to `all`. `add`, `switch` and `remove`
-default to `claude` and refuse `all`.
+`-claude`/`-cl`, `-codex`/`-cx`, `-antigravity`/`-ag`, `-all`. No flag on list,
+auto, doctor, watch and refresh means every pool. add, switch and remove need
+one.
 
 ### Exit codes
 

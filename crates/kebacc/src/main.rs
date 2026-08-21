@@ -19,7 +19,7 @@ mod term {
 mod usage;
 
 use cmd::Options;
-use provider::{ProviderId, Wanted};
+use provider::{parse_pool_name, ProviderId};
 use term::{say, Color};
 
 fn bind_seal(id: ProviderId) {
@@ -28,41 +28,37 @@ fn bind_seal(id: ProviderId) {
 
 fn main() {
     cmd::update::sweep();
+    cmd::arm::migrate();
     let args: Vec<String> = std::env::args().skip(1).collect();
     std::process::exit(dispatch(&args));
 }
 
 fn usage_text() {
-    println!("kebacc <command> [options]");
+    println!("kebacc <command> [-claude|-cl] [-codex|-cx] [-antigravity|-ag] [-all]");
     println!();
+    println!("  list        saved logins and their quota  (-Refresh asks the API)");
     println!("  add         save the login the CLI is using right now");
-    println!(
-        "  list        the saved logins and what is known of their quota (-Refresh to ask the API)"
-    );
-    println!("  switch      change which saved login the CLI uses");
+    println!("  switch      put a saved login in front");
     println!("  remove      forget a saved login");
-    println!("  auto        switch only if the one in use is out of quota");
-    println!(
-        "  arm         arm or disarm the session-start auto-switch, without switching anything now"
-    );
-    println!("  doctor      check the install and the pool (-Protect, -Adopt, -Clean, -Renew to repair, -Rollback to undo a switch)");
+    println!("  auto        switch only if the one in use is capped");
+    println!("  arm         turn the auto-switch on or off, change nothing now");
+    println!("  doctor      check the install and the pools (-Protect, -Adopt, -Clean, -Renew to repair, -Rollback to undo a switch)");
     println!("  statusline  the Claude Code status line, from a payload on stdin");
     println!("  update      install the newest release (-Check to only say whether one is out)");
-    println!("  install     put this binary, the slash commands and the hooks in place (-StatusLine, -AutoSwitch, -ToolsDir, -NoProfileEdit)");
-    println!(
-        "  uninstall   take all of that back, leaving the saved logins (-Pool removes those too)"
-    );
+    println!("  install     put the binary, slash commands and hooks in place");
+    println!("  uninstall   take that back; saved logins stay (-Pool removes those too)");
     println!();
-    println!("  list -Countdown   both quota windows of every saved account, with their resets (-Refresh reads them again first)");
-    println!("  auto -Midtask     auto from a tool-use hook, at most once an interval");
-    println!("  watch             keep checking on a clock of its own, for the stretches with no tool call (the hooks start this)");
-    println!("  refresh           read every saved account's quota again, silently (the status line spawns this)");
-    println!("  -Provider claude|codex|antigravity|all   which pool. list, auto and doctor default to all");
-    println!("  arm -Provider all|claude|codex|antigravity|off");
-    println!("  arm -Provider claude -Merge         add this pool to whatever is already armed, rather than replacing it");
-    println!(
-        "  arm -Provider claude -Drop          take this pool out, leaving anything else armed"
-    );
+    println!("  kebacc list -ag");
+    println!("  kebacc list -claude -ag");
+    println!("  kebacc add -ag");
+    println!("  kebacc switch -codex -Email you@example.com");
+    println!("  kebacc arm -ag");
+    println!("  kebacc arm off");
+    println!();
+    println!("  list, auto, doctor, arm: no flag means every pool");
+    println!("  add, switch, remove: name one pool");
+    println!("  arm -claude -Merge    add Claude to whatever is already armed");
+    println!("  arm -ag -Drop         take Antigravity out, leave the rest");
     println!();
     println!("  Updates install themselves once a day at session start. KEBACC_SWITCH_UPDATE=off stops that.");
 }
@@ -125,12 +121,7 @@ fn dispatch(args: &[String]) -> i32 {
         return cmd::statusline::gitstat(std::path::Path::new(root));
     }
 
-    let default_provider = if matches!(command, "add" | "switch" | "remove") {
-        "claude"
-    } else {
-        "all"
-    };
-    let (wanted, mut options) = match parse(&args[1..], default_provider) {
+    let mut options = match parse(&args[1..]) {
         Ok(parsed) => parsed,
         Err(problem) => {
             say(&problem, Color::Red);
@@ -161,7 +152,7 @@ fn dispatch(args: &[String]) -> i32 {
             (false, true) => cmd::arm::Mode::Drop,
             (false, false) => cmd::arm::Mode::Set,
         };
-        return cmd::arm::run(&wanted, options.quiet, mode);
+        return cmd::arm::run(&options.wanted, options.quiet, mode);
     }
 
     if command == "refresh" {
@@ -176,41 +167,35 @@ fn dispatch(args: &[String]) -> i32 {
         cmd::update::maybe();
         // Session start is the other place a session announces itself, and the
         // one that gets the watcher up before the first tool call.
-        cmd::watch::ensure_running(&wanted);
+        cmd::watch::ensure_running(&options.wanted);
     }
 
     if command == "watch" {
-        return cmd::watch::run(&wanted);
+        return cmd::watch::run(&options.wanted);
     }
 
     if command == "auto" && options.midtask {
-        return cmd::midtask::run(&wanted);
+        return cmd::midtask::run(&options.wanted);
     }
 
-    match provider::resolve(&wanted) {
-        Ok(Wanted::All) if matches!(command, "add" | "switch" | "remove") => {
-            say(
-                "Pick a pool: -Provider claude, codex or antigravity.",
-                Color::Red,
-            );
-            64
-        }
-        Ok(scope) => {
-            let mut code = 0;
-            for id in scope.ids() {
-                bind_seal(id);
-                let next = run(command, id, &options);
-                if code == 0 {
-                    code = next;
-                }
-            }
-            hushed(code, &options)
-        }
-        Err(problem) => {
-            say(&problem, Color::Red);
-            64
+    if matches!(command, "add" | "switch" | "remove") {
+        let Some(id) = options.wanted.exactly_one() else {
+            say("Name a pool: -claude, -codex or -ag.", Color::Red);
+            return 64;
+        };
+        bind_seal(id);
+        return hushed(run(command, id, &options), &options);
+    }
+
+    let mut code = 0;
+    for id in options.wanted.ids() {
+        bind_seal(id);
+        let next = run(command, id, &options);
+        if code == 0 {
+            code = next;
         }
     }
+    hushed(code, &options)
 }
 
 fn hushed(code: i32, options: &Options) -> i32 {
@@ -235,26 +220,41 @@ fn run(command: &str, id: ProviderId, options: &Options) -> i32 {
     }
 }
 
-fn parse(tokens: &[String], default_provider: &str) -> Result<(String, Options), String> {
-    let mut provider = default_provider.to_string();
+fn parse(tokens: &[String]) -> Result<Options, String> {
     let mut options = Options::default();
     let mut index = 0;
 
     while index < tokens.len() {
         let token = &tokens[index];
         index += 1;
-        let Some(name) = token.strip_prefix('-') else {
-            return Err(format!(
-                "Unexpected argument '{token}'. Options are named: -Email you@example.com"
-            ));
-        };
+        if !token.starts_with('-') {
+            if token.contains('@') {
+                options.email = Some(token.clone());
+                continue;
+            }
+            match parse_pool_name(token) {
+                Some(name) => options.wanted.apply_name(name),
+                None => {
+                    return Err(format!(
+                        "Unexpected argument '{token}'. Pools are -claude, -codex, -ag."
+                    ))
+                }
+            }
+            continue;
+        }
         // `-ToolsDir` and `--tools-dir` are the same option: the two installers
         // this replaced took the Windows spelling and the POSIX one, and the
         // instructions people have already been given use both.
-        let name = name
+        let name = token
             .trim_start_matches('-')
             .replace(['-', '_'], "")
             .to_lowercase();
+        if let Some(pool) = parse_pool_name(&name) {
+            if !matches!(name.as_str(), "provider" | "p") {
+                options.wanted.apply_name(pool);
+                continue;
+            }
+        }
         let mut value = || {
             let next = tokens.get(index).filter(|t| !t.starts_with('-'));
             if next.is_some() {
@@ -264,8 +264,15 @@ fn parse(tokens: &[String], default_provider: &str) -> Result<(String, Options),
         };
         match name.as_str() {
             "provider" | "p" => {
-                provider =
-                    value().ok_or("-Provider needs a name: claude, codex, antigravity or all.")?
+                let given = value().ok_or("Name a pool: -claude, -codex or -ag.")?;
+                match parse_pool_name(&given) {
+                    Some(pool) => options.wanted.apply_name(pool),
+                    None => {
+                        return Err(format!(
+                            "Unknown pool '{given}'. Use -claude, -codex, -ag or -all."
+                        ))
+                    }
+                }
             }
             "email" | "e" => options.email = Some(value().ok_or("-Email needs an address.")?),
             "quiet" => options.quiet = true,
@@ -290,12 +297,7 @@ fn parse(tokens: &[String], default_provider: &str) -> Result<(String, Options),
             "nostatusline" => options.statusline = Some(false),
             "toolsdir" => options.tools_dir = Some(value().ok_or("-ToolsDir needs a directory.")?),
             "binary" => options.binary = Some(value().ok_or("-Binary needs a path.")?),
-            // `-AutoSwitch claude` is accepted so the words the old installers
-            // took still work; the value is ignored, install arms every pool.
-            "autoswitch" => {
-                let _ = value();
-                options.auto_switch = true;
-            }
+            "autoswitch" => options.auto_switch = true,
             "noprofileedit" => options.no_profile_edit = true,
             "pool" => options.pool = true,
             "autoupdate" => options.updates = Some(true),
@@ -303,5 +305,5 @@ fn parse(tokens: &[String], default_provider: &str) -> Result<(String, Options),
             other => return Err(format!("Unknown option '-{other}'.")),
         }
     }
-    Ok((provider, options))
+    Ok(options)
 }

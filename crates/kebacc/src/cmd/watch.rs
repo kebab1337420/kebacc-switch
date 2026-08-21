@@ -106,7 +106,7 @@ fn watcher_alive() -> bool {
 
 /// Called by the hooks. Records that a session is alive and starts the watcher
 /// if none is running.
-pub fn ensure_running(provider: &str) {
+pub fn ensure_running(wanted: &crate::provider::Wanted) {
     stamp(SESSION_BEAT);
     if watcher_alive() {
         return;
@@ -118,8 +118,9 @@ pub fn ensure_running(provider: &str) {
         return;
     };
     let mut command = Command::new(exe);
+    command.arg("watch");
+    command.args(wanted.flags());
     command
-        .args(["watch", "-Provider", provider])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -187,7 +188,7 @@ fn stop_requested(started_ms: u128) -> bool {
 }
 
 /// The loop itself. Runs until the session it serves goes quiet.
-pub fn run(provider: &str) -> i32 {
+pub fn run(wanted: &crate::provider::Wanted) -> i32 {
     let started = SystemTime::now();
     let started_ms = now_ms();
     loop {
@@ -198,7 +199,7 @@ pub fn run(provider: &str) -> i32 {
         if started.elapsed().unwrap_or(Duration::ZERO) > MAX_LIFE {
             return done();
         }
-        check(provider);
+        check(wanted);
         if !nap(started_ms) {
             return done();
         }
@@ -230,13 +231,15 @@ fn done() -> i32 {
 /// One check, in a child of its own. The same command the mid-task hook
 /// spawns, so a switch from here leaves the same note and reads the same
 /// quota; a check that dies takes nothing with it.
-fn check(provider: &str) {
+fn check(wanted: &crate::provider::Wanted) {
     let Ok(exe) = std::env::current_exe() else {
         return;
     };
     let mut command = Command::new(exe);
+    command.arg("auto");
+    command.args(wanted.flags());
+    command.args(["-Hook", "-Spawned"]);
     command
-        .args(["auto", "-Provider", provider, "-Hook", "-Spawned"])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());

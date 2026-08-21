@@ -38,9 +38,7 @@ pub fn run(opts: &Options) -> i32 {
         // a hook left behind is worse than a stale setting: it fails at the
         // start of every session the user opens from here on.
         //
-        // -Drop rather than off: it takes this pool out and leaves anything
-        // else armed, where off disarms whatever it finds.
-        super::arm::run("all", true, super::arm::Mode::Drop);
+        super::arm::run(&crate::provider::Wanted::off(), true, super::arm::Mode::Set);
         super::wire::run(Some(false), None, true);
         super::wire::run(None, Some(true), true);
     } else {

@@ -104,17 +104,18 @@ jobs:
 
           test -x "$HOME/.claude-tools/kebacc"
           test "$(cat "$HOME/.claude-tools/.version")" = "$(cat plugins/kebacc/VERSION)"
-          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-claude.md"
-          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-codex.md"
-          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-antigravity.md"
-          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-all.md"
-          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-auto-all.md"
+          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list.md"
+          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-add.md"
+          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-auto.md"
+          test ! -e "$CLAUDE_CONFIG_DIR/commands/kebacc-list-claude.md"
+          test ! -e "$CLAUDE_CONFIG_DIR/commands/kebacc-list-all.md"
           grep -q '"model": *"opus"' "$CLAUDE_CONFIG_DIR/settings.json"
           grep -q 'statusLine' "$CLAUDE_CONFIG_DIR/settings.json"
           grep -q 'SessionStart' "$CLAUDE_CONFIG_DIR/settings.json"
           grep -q 'PreToolUse' "$CLAUDE_CONFIG_DIR/settings.json"
           grep -q -- '-Midtask' "$CLAUDE_CONFIG_DIR/settings.json"
-          grep -q -- '-Provider all' "$CLAUDE_CONFIG_DIR/settings.json"
+          grep -q -- 'auto' "$CLAUDE_CONFIG_DIR/settings.json"
+          ! grep -q -- '-Provider' "$CLAUDE_CONFIG_DIR/settings.json"
           cat "$HOME"/.zshrc "$HOME"/.bashrc "$HOME"/.profile 2>/dev/null |
             grep -q 'kebacc account switcher'
           "$HOME/.claude-tools/kebacc" doctor > /dev/null
@@ -137,8 +138,8 @@ jobs:
             echo "the uninstall left retired kebacc-install-codex.md behind" >&2
             exit 1
           }
-          test ! -e "$CLAUDE_CONFIG_DIR/commands/kebacc-list-all.md"
-          test ! -e "$CLAUDE_CONFIG_DIR/commands/kebacc-auto-all.md"
+          test ! -e "$CLAUDE_CONFIG_DIR/commands/kebacc-list.md"
+          test ! -e "$CLAUDE_CONFIG_DIR/commands/kebacc-auto.md"
           ! grep -q 'statusLine' "$CLAUDE_CONFIG_DIR/settings.json"
           ! grep -q 'SessionStart' "$CLAUDE_CONFIG_DIR/settings.json"
           ! grep -q 'PreToolUse' "$CLAUDE_CONFIG_DIR/settings.json"
@@ -201,9 +202,10 @@ jobs:
 
           if (Test-Path -LiteralPath (Join-Path $tools 'kebacc-codex.exe')) { throw 'leftover kebacc-codex.exe was not swept' }
           $commands = Join-Path $env:CLAUDE_CONFIG_DIR 'commands'
-          foreach ($name in 'kebacc-list-claude.md', 'kebacc-list-codex.md', 'kebacc-list-antigravity.md', 'kebacc-list-all.md') {
+          foreach ($name in 'kebacc-list.md', 'kebacc-add.md', 'kebacc-auto.md') {
             if (-not (Test-Path -LiteralPath (Join-Path $commands $name))) { throw "$name is missing" }
           }
+          if (Test-Path -LiteralPath (Join-Path $commands 'kebacc-list-claude.md')) { throw 'retired kebacc-list-claude.md was not swept' }
           Write-Host 'one install carries every pool'
 
       - name: The published release installs and runs
@@ -242,7 +244,7 @@ jobs:
           test -x "$HOME/.claude-tools/kebacc"
           "$HOME/.claude-tools/kebacc" --version
           "$HOME/.claude-tools/kebacc" doctor > /dev/null
-          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-claude.md"
+          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list.md"
           "$HOME/.claude-tools/kebacc" uninstall --yes
           echo 'the published binary installs and runs'
 
@@ -285,6 +287,6 @@ jobs:
           call install.bat -ToolsDir "%TOOLS%" -NoProfileEdit || exit /b 1
           "%TOOLS%\kebacc.exe" --version || exit /b 1
           "%TOOLS%\kebacc.exe" doctor >nul || exit /b 1
-          if not exist "%CLAUDE_CONFIG_DIR%\commands\kebacc-list-claude.md" exit /b 1
+          if not exist "%CLAUDE_CONFIG_DIR%\commands\kebacc-list.md" exit /b 1
           "%TOOLS%\kebacc.exe" uninstall -ToolsDir "%TOOLS%" -NoProfileEdit -Yes || exit /b 1
           echo the published binary installs and runs

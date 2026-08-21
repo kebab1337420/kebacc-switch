@@ -27,96 +27,28 @@ use std::process::Command;
 /// fails the build instead of shipping as a command nobody gets.
 pub const COMMANDS: &[(&str, &str)] = &[
     (
-        "kebacc-add-antigravity.md",
-        include_str!("../../../../plugins/kebacc/src/commands/kebacc-add-antigravity.md"),
+        "kebacc-add.md",
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-add.md"),
     ),
     (
-        "kebacc-add-claude.md",
-        include_str!("../../../../plugins/kebacc/src/commands/kebacc-add-claude.md"),
-    ),
-    (
-        "kebacc-add-codex.md",
-        include_str!("../../../../plugins/kebacc/src/commands/kebacc-add-codex.md"),
-    ),
-    (
-        "kebacc-auto-all.md",
-        include_str!("../../../../plugins/kebacc/src/commands/kebacc-auto-all.md"),
-    ),
-    (
-        "kebacc-auto-antigravity.md",
-        include_str!("../../../../plugins/kebacc/src/commands/kebacc-auto-antigravity.md"),
-    ),
-    (
-        "kebacc-auto-claude.md",
-        include_str!("../../../../plugins/kebacc/src/commands/kebacc-auto-claude.md"),
-    ),
-    (
-        "kebacc-auto-codex.md",
-        include_str!("../../../../plugins/kebacc/src/commands/kebacc-auto-codex.md"),
-    ),
-    (
-        "kebacc-auto-toggle.md",
-        include_str!("../../../../plugins/kebacc/src/commands/kebacc-auto-toggle.md"),
-    ),
-    (
-        "kebacc-doctor-antigravity.md",
-        include_str!("../../../../plugins/kebacc/src/commands/kebacc-doctor-antigravity.md"),
-    ),
-    (
-        "kebacc-doctor-codex.md",
-        include_str!("../../../../plugins/kebacc/src/commands/kebacc-doctor-codex.md"),
+        "kebacc-auto.md",
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-auto.md"),
     ),
     (
         "kebacc-doctor.md",
         include_str!("../../../../plugins/kebacc/src/commands/kebacc-doctor.md"),
     ),
     (
-        "kebacc-list-all.md",
-        include_str!("../../../../plugins/kebacc/src/commands/kebacc-list-all.md"),
+        "kebacc-list.md",
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-list.md"),
     ),
     (
-        "kebacc-list-antigravity.md",
-        include_str!("../../../../plugins/kebacc/src/commands/kebacc-list-antigravity.md"),
+        "kebacc-remove.md",
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-remove.md"),
     ),
     (
-        "kebacc-list-claude.md",
-        include_str!("../../../../plugins/kebacc/src/commands/kebacc-list-claude.md"),
-    ),
-    (
-        "kebacc-list-codex.md",
-        include_str!("../../../../plugins/kebacc/src/commands/kebacc-list-codex.md"),
-    ),
-    (
-        "kebacc-remove-antigravity.md",
-        include_str!("../../../../plugins/kebacc/src/commands/kebacc-remove-antigravity.md"),
-    ),
-    (
-        "kebacc-remove-claude.md",
-        include_str!("../../../../plugins/kebacc/src/commands/kebacc-remove-claude.md"),
-    ),
-    (
-        "kebacc-remove-codex.md",
-        include_str!("../../../../plugins/kebacc/src/commands/kebacc-remove-codex.md"),
-    ),
-    (
-        "kebacc-switch-antigravity.md",
-        include_str!("../../../../plugins/kebacc/src/commands/kebacc-switch-antigravity.md"),
-    ),
-    (
-        "kebacc-switch-claude.md",
-        include_str!("../../../../plugins/kebacc/src/commands/kebacc-switch-claude.md"),
-    ),
-    (
-        "kebacc-switch-codex.md",
-        include_str!("../../../../plugins/kebacc/src/commands/kebacc-switch-codex.md"),
-    ),
-    (
-        "kebacc-update-antigravity.md",
-        include_str!("../../../../plugins/kebacc/src/commands/kebacc-update-antigravity.md"),
-    ),
-    (
-        "kebacc-update-codex.md",
-        include_str!("../../../../plugins/kebacc/src/commands/kebacc-update-codex.md"),
+        "kebacc-switch.md",
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-switch.md"),
     ),
     (
         "kebacc-update.md",
@@ -163,7 +95,31 @@ const DEAD_COMMANDS: &[&str] = &["refresh-a.md", "refresh-t.md"];
 /// Kept apart from COMMANDS on purpose. Install writes COMMANDS. Uninstall
 /// sweeps COMMANDS, DEAD_COMMANDS and this list. Folding the three into one
 /// table would start shipping them again.
-pub const RETIRED: &[&str] = &["kebacc-install-codex.md"];
+pub const RETIRED: &[&str] = &[
+    "kebacc-install-codex.md",
+    "kebacc-add-antigravity.md",
+    "kebacc-add-claude.md",
+    "kebacc-add-codex.md",
+    "kebacc-auto-all.md",
+    "kebacc-auto-antigravity.md",
+    "kebacc-auto-claude.md",
+    "kebacc-auto-codex.md",
+    "kebacc-auto-toggle.md",
+    "kebacc-doctor-antigravity.md",
+    "kebacc-doctor-codex.md",
+    "kebacc-list-all.md",
+    "kebacc-list-antigravity.md",
+    "kebacc-list-claude.md",
+    "kebacc-list-codex.md",
+    "kebacc-remove-antigravity.md",
+    "kebacc-remove-claude.md",
+    "kebacc-remove-codex.md",
+    "kebacc-switch-antigravity.md",
+    "kebacc-switch-claude.md",
+    "kebacc-switch-codex.md",
+    "kebacc-update-antigravity.md",
+    "kebacc-update-codex.md",
+];
 
 /// The marker that says which version of the plugin is installed here.
 pub const VERSION_FILE: &str = ".version";
@@ -314,9 +270,14 @@ pub fn run(opts: &Options) -> i32 {
     }
 
     if opts.auto_switch {
-        // Every pool. -Merge widens a narrower hook already on the machine
-        // rather than replacing it with a different spelling of the same thing.
-        if !ran(&entry, &["arm", "-Provider", "all", "-Merge", "-Quiet"]) {
+        let mut args = vec!["arm".to_string()];
+        args.extend(opts.wanted.flags());
+        if opts.wanted.exactly_one().is_some() {
+            args.push("-Merge".into());
+        }
+        args.push("-Quiet".into());
+        let args: Vec<&str> = args.iter().map(String::as_str).collect();
+        if !ran(&entry, &args) {
             say("Could not arm the auto-switch.", Color::Red);
             return 1;
         }
@@ -328,11 +289,8 @@ pub fn run(opts: &Options) -> i32 {
 
     say("", Color::Plain);
     say(&format!("kebacc {version} is installed."), Color::Green);
-    say(
-        "  kebacc add -Provider claude|codex|antigravity",
-        Color::Dim,
-    );
-    say("  kebacc list      every pool, and its quota", Color::Dim);
+    say("  kebacc add -claude|-codex|-ag", Color::Dim);
+    say("  kebacc list      every pool, or list -ag", Color::Dim);
     say("  kebacc doctor    check everything", Color::Dim);
     0
 }
@@ -586,21 +544,21 @@ mod tests {
     }
 
     #[test]
-    fn every_pool_command_is_ours_to_write_and_take_back() {
+    fn the_old_per_pool_commands_are_swept_not_shipped() {
         for name in [
+            "kebacc-list-claude.md",
             "kebacc-list-codex.md",
-            "kebacc-auto-codex.md",
-            "kebacc-add-antigravity.md",
+            "kebacc-list-antigravity.md",
             "kebacc-list-all.md",
             "kebacc-auto-all.md",
+            "kebacc-auto-toggle.md",
         ] {
-            assert!(ours(name), "{name} is shipped by this binary");
+            assert!(ours(name), "{name} must still be removed");
+            assert!(
+                !COMMANDS.iter().any(|(shipped, _)| *shipped == name),
+                "{name} is retired and must not ship"
+            );
         }
-    }
-
-    #[test]
-    fn the_toggle_we_ship_stays_ours_to_rewrite() {
-        assert!(ours("kebacc-auto-toggle.md"));
     }
 
     #[test]

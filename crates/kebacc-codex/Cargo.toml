@@ -1,6 +1,6 @@
 [package]
 name = "kebacc-codex"
-version = "0.2.8"
+version = "1.0.0"
 description = "Several Claude Code and Codex logins on one machine, and one command to move between them"
 edition = "2021"
 

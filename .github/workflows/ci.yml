@@ -110,7 +110,21 @@ jobs:
           mkdir -p "$HOME" "$CLAUDE_CONFIG_DIR"
           echo '{"model":"opus"}' > "$CLAUDE_CONFIG_DIR/settings.json"
 
+          # kebacc-antigravity installs into this same directory and ships all
+          # three. Neither the install nor the uninstall may take them.
+          mkdir -p "$CLAUDE_CONFIG_DIR/commands"
+          for name in kebacc-auto-all.md kebacc-list-all.md kebacc-list-antigravity.md; do
+            printf 'another half wrote this\n' > "$CLAUDE_CONFIG_DIR/commands/$name"
+          done
+
           target/release/kebacc install --status-line --auto-switch claude
+
+          for name in kebacc-auto-all.md kebacc-list-all.md kebacc-list-antigravity.md; do
+            test -f "$CLAUDE_CONFIG_DIR/commands/$name" || {
+              echo "the install took $name, which belongs to another half" >&2
+              exit 1
+            }
+          done
 
           test -x "$HOME/.claude-tools/kebacc"
           test "$(cat "$HOME/.claude-tools/.version")" = "$(cat plugins/kebacc/VERSION)"
@@ -128,10 +142,7 @@ jobs:
 
           # Names an older install still has on disk. Uninstall must take them
           # even though this build no longer writes them.
-          mkdir -p "$CLAUDE_CONFIG_DIR/commands"
-          for name in kebacc-auto-all.md kebacc-list-all.md kebacc-install-codex.md; do
-            printf 'retired\n' > "$CLAUDE_CONFIG_DIR/commands/$name"
-          done
+          printf 'retired\n' > "$CLAUDE_CONFIG_DIR/commands/kebacc-install-codex.md"
 
           # --yes: the uninstall asks before taking anything, and there is no
           # terminal here to answer it from. It is run from the installed copy,
@@ -145,9 +156,13 @@ jobs:
               exit 1
             }
           done
-          for name in kebacc-auto-all.md kebacc-list-all.md kebacc-install-codex.md; do
-            test ! -e "$CLAUDE_CONFIG_DIR/commands/$name" || {
-              echo "the uninstall left retired $name behind" >&2
+          test ! -e "$CLAUDE_CONFIG_DIR/commands/kebacc-install-codex.md" || {
+            echo "the uninstall left retired kebacc-install-codex.md behind" >&2
+            exit 1
+          }
+          for name in kebacc-auto-all.md kebacc-list-all.md kebacc-list-antigravity.md; do
+            test -f "$CLAUDE_CONFIG_DIR/commands/$name" || {
+              echo "the uninstall took $name, which belongs to another half" >&2
               exit 1
             }
           done

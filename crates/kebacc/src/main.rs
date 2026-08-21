@@ -2,6 +2,8 @@ mod cmd;
 mod jsonio;
 mod live;
 mod lock;
+mod log;
+mod oauth;
 mod pool;
 mod proc;
 mod provider;
@@ -32,7 +34,7 @@ fn usage_text() {
     println!(
         "  arm         arm or disarm the session-start auto-switch, without switching anything now"
     );
-    println!("  doctor      check the install and the pool (-Protect, -Adopt, -Clean to repair, -Rollback to undo a switch)");
+    println!("  doctor      check the install and the pool (-Protect, -Adopt, -Clean, -Renew to repair, -Rollback to undo a switch)");
     println!("  statusline  the Claude Code status line, from a payload on stdin");
     println!("  update      install the newest release (-Check to only say whether one is out)");
     println!("  install     put this binary, the slash commands and the hooks in place (-StatusLine, -AutoSwitch, -ToolsDir, -NoProfileEdit)");
@@ -248,6 +250,7 @@ fn parse(tokens: &[String]) -> Result<(String, Options), String> {
             "protect" => options.protect = true,
             "adopt" => options.adopt = true,
             "rollback" => options.rollback = true,
+            "renew" => options.renew = true,
             "clean" => options.clean = true,
             "countdown" => options.countdown = true,
             "midtask" => options.midtask = true,

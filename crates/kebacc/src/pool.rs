@@ -340,6 +340,39 @@ pub fn new_snapshot(
     (Value::Object(entry), protected)
 }
 
+/// Put a fresh credentials document into a snapshot that already exists,
+/// keeping everything else it holds, and stamp it again so the pool still
+/// counts it as one this machine registered.
+pub fn save_creds(provider: &Provider, file: &Path, raw: &str) -> bool {
+    let previous = jsonio::read(file);
+    let email = previous
+        .as_ref()
+        .and_then(|p| jsonio::str_of(p, "email"))
+        .unwrap_or_default();
+    if email.is_empty() {
+        return false;
+    }
+    let identity = previous.as_ref().and_then(identity_of);
+    let cache = previous.as_ref().and_then(|p| jsonio::obj(p, "usageCache"));
+    let saved_at = previous.as_ref().and_then(|p| jsonio::str_of(p, "savedAt"));
+    let (snapshot, _) = new_snapshot(
+        &email,
+        raw,
+        identity.as_ref(),
+        cache.as_ref(),
+        saved_at.as_deref(),
+    );
+    if jsonio::write(file, &snapshot).is_err() {
+        return false;
+    }
+    let name = file
+        .file_name()
+        .map(|n| n.to_string_lossy().to_string())
+        .unwrap_or_default();
+    Pool::new(provider).register(&name, &snapshot);
+    true
+}
+
 pub fn snapshot_files(store: &Path) -> Vec<PathBuf> {
     match std::fs::read_dir(store) {
         Ok(dir) => dir.filter_map(|e| e.ok()).map(|e| e.path()).collect(),
@@ -407,4 +440,82 @@ fn same_stamp(left: &str, right: &str) -> bool {
         diff |= a ^ b;
     }
     diff == 0
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::provider::ProviderId;
+
+    fn temp_provider(name: &str) -> Provider {
+        let store = std::env::temp_dir().join(format!(
+            "kebacc-pool-{name}-{}-{}",
+            std::process::id(),
+            std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_nanos())
+                .unwrap_or(0)
+        ));
+        std::fs::create_dir_all(&store).expect("a store to write into");
+        Provider {
+            id: ProviderId::Claude,
+            label: "Claude Code",
+            cli: "claude",
+            store,
+            cred_candidates: Vec::new(),
+            config_candidates: Vec::new(),
+            cred_label: "test",
+            uses_keychain: false,
+            keychain_service: None,
+        }
+    }
+
+    fn creds(access: &str) -> String {
+        json!({ "claudeAiOauth": { "accessToken": access, "refreshToken": "r", "expiresAt": 1 } })
+            .to_string()
+    }
+
+    #[test]
+    fn a_new_pair_replaces_the_old_one_and_keeps_the_rest() {
+        let provider = temp_provider("save");
+        let (snapshot, _) = new_snapshot(
+            "one@example.com",
+            &creds("old"),
+            Some(&json!({ "emailAddress": "one@example.com", "accountUuid": "u-1" })),
+            Some(&json!({ "checkedAt": "2026-01-01T00:00:00Z" })),
+            Some("2026-01-01T00:00:00Z"),
+        );
+        let file = provider.snapshot_path("one@example.com");
+        jsonio::write(&file, &snapshot).expect("the snapshot is written");
+        Pool::new(&provider).register(&file.file_name().unwrap().to_string_lossy(), &snapshot);
+
+        assert!(save_creds(&provider, &file, &creds("new")));
+
+        let entries = Pool::new(&provider).entries();
+        let entry = entries.first().expect("the account is still there");
+        assert_eq!(entry.email, "one@example.com");
+        assert_eq!(entry.creds.as_deref(), Some(creds("new").as_str()));
+        assert_eq!(
+            jsonio::str_of(&entry.snapshot, "savedAt").as_deref(),
+            Some("2026-01-01T00:00:00Z")
+        );
+        assert!(entry.cache.is_some());
+        // The stamp is written again, so the pool still knows the account. A
+        // machine with no secret backend, which is most CI Linux, holds no key
+        // to stamp with and reads every snapshot as unverified. What has to
+        // hold everywhere is that the rewrite never reads as CHANGED.
+        let stamped = Pool::new(&provider).key(false).is_some();
+        assert!(matches!(entry.trust, Trust::Trusted | Trust::NoKey));
+        assert!(!stamped || matches!(entry.trust, Trust::Trusted));
+        let _ = std::fs::remove_dir_all(&provider.store);
+    }
+
+    #[test]
+    fn a_snapshot_that_is_not_there_is_not_invented() {
+        let provider = temp_provider("missing");
+        let file = provider.snapshot_path("nobody@example.com");
+        assert!(!save_creds(&provider, &file, &creds("new")));
+        assert!(!file.exists());
+        let _ = std::fs::remove_dir_all(&provider.store);
+    }
 }

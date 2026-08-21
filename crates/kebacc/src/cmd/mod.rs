@@ -30,6 +30,9 @@ pub struct Options {
     pub protect: bool,
     pub adopt: bool,
     pub rollback: bool,
+    /// `doctor -Renew`: ask the token endpoint for a new pair for every saved
+    /// login whose own has run out, and keep what comes back.
+    pub renew: bool,
     pub clean: bool,
     pub countdown: bool,
     pub midtask: bool,

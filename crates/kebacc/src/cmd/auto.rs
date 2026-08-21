@@ -193,9 +193,15 @@ fn take(
     warning: Option<&str>,
     note: &dyn Fn(&str, Color),
 ) -> i32 {
-    if let Err(problem) = live::activate(provider, entry) {
-        note(&problem, Color::Red);
-        return 1;
+    let activation = match live::activate(provider, entry) {
+        Ok(activation) => activation,
+        Err(problem) => {
+            note(&problem, Color::Red);
+            return 1;
+        }
+    };
+    if let Some(text) = activation.warning.as_deref() {
+        note(text, Color::Yellow);
     }
     let pair = usage
         .map(|u| u.as_pair())

@@ -298,21 +298,148 @@ pub fn newest_backup(provider: &Provider) -> Option<Backup> {
     Some(Backup { raw, at })
 }
 
-pub fn activate(provider: &Provider, entry: &crate::pool::Entry) -> Result<(), String> {
+/// What a switch did, beyond succeeding. The warning is what the caller says
+/// out loud: the pair went over as it was, and the CLI may ask for a login.
+pub struct Activation {
+    pub renewed: bool,
+    pub warning: Option<String>,
+}
+
+/// Where the account this machine last switched to is written down, so that a
+/// pair the CLI rotates afterwards can be filed under the login it belongs to
+/// rather than under whichever login `~/.claude.json` happens to name.
+fn active_file(provider: &Provider) -> PathBuf {
+    crate::provider::state_dir().join(format!("active-{}.json", provider.id.as_str()))
+}
+
+fn remember_active(provider: &Provider, email: &str, raw: &str) {
+    let record = json!({
+        "email": email,
+        "accessFingerprint": crate::log::fingerprint(crate::oauth::access_token(raw).as_deref()),
+        "at": crate::usage::now_iso(),
+    });
+    let _ = jsonio::write(&active_file(provider), &record);
+}
+
+fn active_email(provider: &Provider) -> Option<String> {
+    jsonio::str_of(&jsonio::read(&active_file(provider))?, "email")
+}
+
+/// The pair the CLI is using right now, saved back into the pool before it is
+/// overwritten.
+///
+/// Claude Code renews its own token as it works, and the renewal retires the
+/// pair the pool holds. Switching away without saving what the CLI ended up
+/// with is therefore what makes the account unusable next time round: the
+/// snapshot keeps a pair the server has already forgotten. This runs on the
+/// way out of every switch.
+pub fn capture(provider: &Provider, pool: &[crate::pool::Entry]) {
+    let Some(raw) = creds_raw(provider) else {
+        return;
+    };
+    let print = crate::log::fingerprint(crate::oauth::access_token(&raw).as_deref());
+    let identity_email = identity(provider)
+        .as_ref()
+        .and_then(|id| jsonio::str_of(id, "emailAddress"));
+    let remembered = active_email(provider);
+    if let (Some(live), Some(last)) = (identity_email.as_deref(), remembered.as_deref()) {
+        if !live.eq_ignore_ascii_case(last) {
+            crate::log::line(&format!(
+                "capture: the CLI names {live} but the last switch was to {last}; going with {live}"
+            ));
+        }
+    }
+    let Some(owner) = identity_email.or(remembered) else {
+        crate::log::line(&format!(
+            "capture: no owner for the live pair {print}, leaving the pool alone"
+        ));
+        return;
+    };
+    let Some(entry) = pool.iter().find(|e| e.email.eq_ignore_ascii_case(&owner)) else {
+        crate::log::line(&format!(
+            "capture: {owner} is not in the pool, nothing to save"
+        ));
+        return;
+    };
+    if entry.creds.as_deref() == Some(raw.as_str()) {
+        return;
+    }
+    if entry.trust == crate::pool::Trust::Changed {
+        crate::log::line(&format!(
+            "capture: {owner} is not the account this machine registered, refusing to write over it"
+        ));
+        return;
+    }
+    let saved = crate::pool::save_creds(provider, &entry.file, &raw);
+    crate::log::line(&format!(
+        "capture: {owner} pair {print} expiring {} {}",
+        crate::log::moment(crate::oauth::expires_at(&raw)),
+        if saved { "saved" } else { "COULD NOT BE SAVED" }
+    ));
+}
+
+pub fn activate(provider: &Provider, entry: &crate::pool::Entry) -> Result<Activation, String> {
     let Some(creds) = entry.creds.as_deref() else {
+        crate::log::line(&format!(
+            "switch: {} could not be read back out of the pool",
+            entry.email
+        ));
         return Err(format!(
             "The credentials for {} could not be read back.",
             entry.email
         ));
     };
+    crate::log::line(&format!(
+        "switch: to {}, saved pair {} expiring {}",
+        entry.email,
+        crate::log::fingerprint(crate::oauth::access_token(creds).as_deref()),
+        crate::log::moment(crate::oauth::expires_at(creds)),
+    ));
     lock::locked(lock::CRED_SWAP, || {
         backup_creds(provider);
-        set_creds_raw(provider, creds)
+        capture(provider, &crate::pool::Pool::new(provider).entries());
+
+        let mut warning = None;
+        let mut renewed = false;
+        let creds = match crate::oauth::renew_if_stale(creds) {
+            crate::oauth::Renewal::Fresh => creds.to_string(),
+            crate::oauth::Renewal::Renewed(fresh) => {
+                renewed = true;
+                let saved = crate::pool::save_creds(provider, &entry.file, &fresh);
+                crate::log::line(&format!(
+                    "switch: renewed {} to pair {} expiring {} ({})",
+                    entry.email,
+                    crate::log::fingerprint(crate::oauth::access_token(&fresh).as_deref()),
+                    crate::log::moment(crate::oauth::expires_at(&fresh)),
+                    if saved {
+                        "written back to the pool"
+                    } else {
+                        "NOT written back to the pool"
+                    }
+                ));
+                fresh
+            }
+            crate::oauth::Renewal::Failed(problem) => {
+                crate::log::line(&format!(
+                    "switch: could not renew {}: {problem}",
+                    entry.email
+                ));
+                warning = Some(format!(
+                    "The saved pair for {} is out of date and could not be renewed ({problem}). If the CLI asks for a login, run /login and save the account again.",
+                    entry.email
+                ));
+                creds.to_string()
+            }
+        };
+
+        set_creds_raw(provider, &creds)
             .map_err(|e| format!("Could not write the credentials: {e}"))?;
         if let Some(identity) = entry.identity.as_ref() {
             set_identity(provider, identity);
         }
-        Ok(())
+        remember_active(provider, &entry.email, &creds);
+        crate::log::line(&format!("switch: {} is now the live login", entry.email));
+        Ok(Activation { renewed, warning })
     })?
 }
 

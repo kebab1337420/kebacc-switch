@@ -197,6 +197,14 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
         if entry.creds.is_some() && entry.protected && entry.trust == Trust::Trusted {
             report.good("sealed and stamped");
         }
+        if let Some(raw) = entry.creds.as_deref() {
+            token_report(provider, &entry, raw, opts.renew, &mut report);
+        }
+    }
+
+    let log = crate::log::path();
+    if log.exists() {
+        report.good(&format!("switches are written down in {}", log.display()));
     }
 
     let stale = stale_files(provider);
@@ -233,6 +241,37 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
         );
     }
     exit_code(&report)
+}
+
+/// What the saved pair is worth, and, when asked, a new one in its place.
+fn token_report(
+    provider: &Provider,
+    entry: &pool::Entry,
+    raw: &str,
+    renew: bool,
+    report: &mut Report,
+) {
+    let expiry = crate::log::moment(crate::oauth::expires_at(raw));
+    if !crate::oauth::stale(raw) {
+        report.good(&format!("token good until {expiry}"));
+        return;
+    }
+    if !renew {
+        report.warn(&format!(
+            "its token ran out at {expiry}. The switch renews it on the way in; renew it now with: kebacc doctor -Renew"
+        ));
+        return;
+    }
+    match crate::oauth::renew(raw) {
+        Ok(fresh) if pool::save_creds(provider, &entry.file, &fresh) => report.good(&format!(
+            "token renewed, good until {}",
+            crate::log::moment(crate::oauth::expires_at(&fresh))
+        )),
+        Ok(_) => report.bad("the new token could not be written back to the pool"),
+        Err(problem) => report.bad(&format!(
+            "the token could not be renewed ({problem}). Run /login on this account and save it again"
+        )),
+    }
 }
 
 fn exit_code(report: &Report) -> i32 {

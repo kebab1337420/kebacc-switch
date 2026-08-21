@@ -158,6 +158,7 @@ kebacc arm     -Provider claude -Merge         # arm it without narrowing what i
 kebacc arm     -Provider claude -Drop          # take this pool out again
 kebacc arm     -Provider off                   # disarm it
 kebacc doctor  -Provider all
+kebacc doctor  -Provider claude -Renew        # ask for a new token pair for the logins whose own has run out
 kebacc refresh -Provider all                  # re-read the quotas, print nothing
 kebacc update
 ```
@@ -202,6 +203,7 @@ release.
 | `~/.claude-tools/` | the installed binary and its `.version` |
 | `~/.claude/commands/kebacc-*.md` | the slash commands |
 | `~/.kebacc-switch/` | locks, stamps, update state |
+| `~/.kebacc-switch/kebacc.log` | what every switch did |
 | `~/.kebacc-switch-accounts/` | the Claude Code pool |
 
 Saved credentials are sealed before they touch disk: DPAPI on Windows, and
@@ -211,6 +213,41 @@ tool is reported as changed rather than trusted.
 
 The full account of what is stored and what the hooks do is in
 [`plugins/kebacc/README.md`](plugins/kebacc/README.md).
+
+---
+
+## Tokens, and why a switch used to end in a login prompt
+
+Claude Code's OAuth refresh rotates. Every time the CLI renews its access
+token, the answer carries a new refresh token and the one it sent stops
+working. That is what makes a saved login perishable: a snapshot taken once
+holds a pair the server retires the next time the CLI refreshes, so switching
+back hands the CLI a pair it cannot use, and the CLI asks for a login.
+
+Two things keep the pool alive:
+
+- **On the way out**, the pair the CLI is using right now is written back into
+  the snapshot of the login being left. Whatever the CLI rotated during the
+  session is kept rather than thrown away.
+- **On the way in**, a saved pair inside five minutes of expiry is renewed
+  against the token endpoint first, and what comes back is written into the
+  snapshot before it is written into the CLI's credentials.
+
+A renewal that fails is not fatal: the saved pair goes over as it was, the CLI
+gets its own go at refreshing it, and the switch says out loud that a login
+prompt is possible. `kebacc doctor -Renew` does the same renewal for every
+saved login on demand, and reports which ones need a fresh `/login`.
+
+Every switch is written down in `~/.kebacc-switch/kebacc.log`: which login,
+which pair (as the first ten hex characters of its SHA-256, never the token),
+when it expires, what the renewal answered. `KEBACC_SWITCH_LOG=off` turns it
+off; the file is rotated at 512 KB.
+
+| Variable | What it does |
+| --- | --- |
+| `KEBACC_SWITCH_LOG=off` | stop writing the log |
+| `KEBACC_SWITCH_OAUTH_CLIENT_ID` | the OAuth client the renewal names |
+| `KEBACC_SWITCH_OAUTH_TOKEN_URL` | where the renewal is sent |
 
 ---
 

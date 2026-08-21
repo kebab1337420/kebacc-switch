@@ -2,11 +2,12 @@
 
 ## What this tool holds
 
-The pool stores OAuth refresh tokens for Antigravity logins. They are sealed
-before they touch disk. Windows uses DPAPI. Everywhere else the seal is
-AES-256-GCM under a key kept in the OS keychain (macOS Keychain or libsecret).
-When no OS secret store is available, that key is stored in plaintext next to
-the pool.
+The pool stores OAuth refresh tokens for Antigravity logins. Windows seals them
+with DPAPI. macOS and Linux seal them with AES-256-GCM under a key held by the
+login keychain (`security`) or by libsecret (`secret-tool`). When none of those
+is available, `add` writes the credentials as plain JSON inside the account
+snapshot, skips the HMAC stamp that detects an edited pool file, and prints a
+warning once.
 
 ## Supported versions
 

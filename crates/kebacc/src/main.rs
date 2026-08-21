@@ -64,10 +64,7 @@ fn usage_text() {
 }
 
 fn dispatch(args: &[String]) -> i32 {
-    let command = args
-        .first()
-        .map(|c| c.to_lowercase())
-        .unwrap_or_else(|| "list".into());
+    let command = args.first().map(|c| c.to_lowercase()).unwrap_or_default();
     if matches!(command.as_str(), "-h" | "--help" | "help" | "") {
         usage_text();
         return 0;
@@ -121,7 +118,7 @@ fn dispatch(args: &[String]) -> i32 {
         return cmd::statusline::gitstat(std::path::Path::new(root));
     }
 
-    let mut options = match parse(&args[1..]) {
+    let mut options = match parse(args.get(1..).unwrap_or(&[])) {
         Ok(parsed) => parsed,
         Err(problem) => {
             say(&problem, Color::Red);
@@ -306,4 +303,21 @@ fn parse(tokens: &[String]) -> Result<Options, String> {
         }
     }
     Ok(options)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn no_args_is_help() {
+        assert_eq!(dispatch(&[]), 0);
+    }
+
+    #[test]
+    fn help_tokens_are_help() {
+        for token in ["help", "-h", "--help", ""] {
+            assert_eq!(dispatch(&[token.to_string()]), 0, "{token}");
+        }
+    }
 }

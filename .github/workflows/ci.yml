@@ -24,8 +24,10 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # rust-toolchain.toml pins channel and components. --profile minimal is
+      # still this job's choice, so the runner does not also fetch rust-docs.
       - name: Toolchain
-        run: rustup toolchain install stable --profile minimal --component clippy
+        run: rustup toolchain install --profile minimal
 
       - uses: Swatinem/rust-cache@v2
 
@@ -34,6 +36,11 @@ jobs:
 
       - name: Test
         run: cargo test --release -p kebacc-antigravity
+
+      # Formatting does not vary by platform, so this runs on one OS only.
+      - name: Format
+        if: runner.os == 'Linux'
+        run: cargo fmt --all -- --check
 
       - name: Clippy
         run: cargo clippy --release --all-targets -p kebacc-antigravity -- -D warnings
@@ -298,3 +305,14 @@ jobs:
           if not exist "%CLAUDE_CONFIG_DIR%\commands\kebacc-list-antigravity.md" exit /b 1
           "%TOOLS%\kebacc-antigravity.exe" uninstall -ToolsDir "%TOOLS%" -NoProfileEdit -Yes || exit /b 1
           echo the published binary installs and runs
+
+  # Own job so an advisory does not skip the test matrix, and the matrix
+  # does not wait on the audit.
+  audit:
+    name: audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}

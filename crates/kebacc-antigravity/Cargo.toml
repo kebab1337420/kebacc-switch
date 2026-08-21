@@ -2,6 +2,7 @@
 name = "kebacc-antigravity"
 version = "0.3.2"
 description = "Several Antigravity logins on one machine, and one command to move between them"
+license = "MIT"
 edition = "2021"
 
 [[bin]]

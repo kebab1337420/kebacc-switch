@@ -19,7 +19,7 @@ between them when the one you are on runs out of quota.**
 
 A small Rust binary and a Claude Code plugin. It saves the Antigravity login
 you are on,
-keeps the saved ones sealed on disk, reads each account's quota from the API,
+seals saved logins when an OS secret store is available, reads each account's quota from the API,
 and moves you to one that still has room — on its own, at session start and
 again mid-task, before you notice you were capped.
 
@@ -212,10 +212,22 @@ them can carry.
 | `~/.kebacc-switch/` | locks, stamps, update state, shared with the other halves |
 | `~/.kebacc-switch-antigravity-accounts/` | the Antigravity pool |
 
-Saved credentials are sealed before they touch disk: DPAPI on Windows, and
-AES-256-GCM under a key held by the macOS Keychain or by libsecret elsewhere.
-Each snapshot carries an HMAC-SHA256 stamp, so a pool file edited outside the
-tool is reported as changed rather than trusted.
+Windows seals each saved login with DPAPI and needs no extra tool. macOS
+and Linux seal with AES-256-GCM under a 32-byte key created on first use
+and kept by `security` or `secret-tool`. Each backend also wraps
+`.pool.key` in the accounts directory, and the pool stamps each saved
+account with HMAC-SHA256 under the key inside that file. When none of
+those backends is available, `add` writes the credentials as plain JSON,
+skips the stamp, and prints a yellow line once. `doctor` then reports the
+backend as none and every account as unverified. Deleting `.pool.key`
+also makes every saved account read as unverified.
+
+| Platform | Backend |
+| --- | --- |
+| Windows | DPAPI |
+| macOS | Keychain (`security`) |
+| Linux | libsecret (`secret-tool`) |
+| none of those | plain JSON, no HMAC stamp |
 
 The full account of what is stored and what the hooks do is in
 [`plugins/kebacc-antigravity/README.md`](plugins/kebacc-antigravity/README.md).

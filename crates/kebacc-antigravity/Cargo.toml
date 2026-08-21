@@ -1,6 +1,6 @@
 [package]
 name = "kebacc-antigravity"
-version = "0.1.0"
+version = "1.0.0"
 description = "Several Antigravity logins on one machine, and one command to move between them"
 edition = "2021"
 

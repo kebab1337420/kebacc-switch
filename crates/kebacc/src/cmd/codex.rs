@@ -1,16 +1,16 @@
-//! Installing the Codex switcher, which lives on its own branch. This used to
-//! be `install-codex.ps1`, downloaded from GitHub by a slash command every time
-//! it was run because a copy on disk went stale.
+//! Installing the Codex switcher from this workspace, or from a clone when
+//! this binary was not run out of a checkout. This used to be `install-codex.ps1`,
+//! downloaded from GitHub by a slash command every time it was run because a
+//! copy on disk went stale.
 //!
-//! kebacc handles Claude and nothing else. Codex has a plugin of its
-//! own, built from the `Codex` branch of the same repository. It installs into
-//! the same tools directory under its own name and its own version marker: the
-//! two share the directory and nothing else, and each uninstaller names its own
-//! files rather than sweeping.
+//! kebacc handles Claude and nothing else. Codex is a crate in the same
+//! workspace, installed into the same tools directory under its own name and
+//! its own version marker: the two share the directory and nothing else, and
+//! each uninstaller names its own files rather than sweeping.
 //!
-//! There is no published release for it, so this clones the branch, builds it
-//! with cargo and hands the binary to whatever installer that branch carries.
-//! Run it again to update. The saved logins are never touched.
+//! `-Source` / `-Branch` still clone. Without them, a checkout that already
+//! has `crates/kebacc-codex` is built in place. The saved logins are never
+//! touched.
 
 use super::Options;
 use crate::term::{say, Color};
@@ -18,32 +18,46 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 const DEFAULT_SOURCE: &str = "https://github.com/kebab1337420/kebacc-switch.git";
-const DEFAULT_BRANCH: &str = "Codex";
+const DEFAULT_BRANCH: &str = "master";
 
 pub fn run(opts: &Options) -> i32 {
     let source = opts
         .source
         .as_deref()
-        .filter(|text| !text.trim().is_empty())
-        .unwrap_or(DEFAULT_SOURCE);
+        .filter(|text| !text.trim().is_empty());
     let branch = opts
         .branch
         .as_deref()
-        .filter(|text| !text.trim().is_empty())
-        .unwrap_or(DEFAULT_BRANCH);
+        .filter(|text| !text.trim().is_empty());
 
-    for needed in ["git", "cargo"] {
-        if !on_path(needed) {
+    if !on_path("cargo") {
+        say(
+            "cargo is not on the PATH, and this builds from source. Install it and run this again.",
+            Color::Red,
+        );
+        return 1;
+    }
+
+    if source.is_none() && branch.is_none() {
+        if let Some(root) = workspace_root() {
             say(
-                &format!(
-                    "{needed} is not on the PATH, and this builds from source. Install it and run this again."
-                ),
-                Color::Red,
+                &format!("Building kebacc-codex from {}", root.display()),
+                Color::Dim,
             );
-            return 1;
+            return build_and_install(opts, &root);
         }
     }
 
+    if !on_path("git") {
+        say(
+            "git is not on the PATH, and this is not a kebacc-switch checkout. Install git, or run this from a clone.",
+            Color::Red,
+        );
+        return 1;
+    }
+
+    let source = source.unwrap_or(DEFAULT_SOURCE);
+    let branch = branch.unwrap_or(DEFAULT_BRANCH);
     let checkout = std::env::temp_dir().join(format!("kebacc-codex-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&checkout);
 
@@ -84,6 +98,37 @@ pub fn run(opts: &Options) -> i32 {
         let _ = std::fs::remove_dir_all(&checkout);
     }
     code
+}
+
+/// Walk up from the current directory and from this binary looking for the
+/// workspace that carries `crates/kebacc-codex`.
+fn workspace_root() -> Option<PathBuf> {
+    let mut starts = Vec::new();
+    if let Ok(cwd) = std::env::current_dir() {
+        starts.push(cwd);
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(parent) = exe.parent() {
+            starts.push(parent.to_path_buf());
+        }
+    }
+    for start in starts {
+        let mut dir = start;
+        loop {
+            if dir
+                .join("crates")
+                .join("kebacc-codex")
+                .join("Cargo.toml")
+                .is_file()
+            {
+                return Some(dir);
+            }
+            if !dir.pop() {
+                break;
+            }
+        }
+    }
+    None
 }
 
 fn build_and_install(opts: &Options, checkout: &Path) -> i32 {
@@ -243,6 +288,14 @@ mod tests {
     #[test]
     fn a_command_that_is_not_there_is_not_on_the_path() {
         assert!(!on_path("kebacc-no-such-program-anywhere"));
+    }
+
+    #[test]
+    fn this_checkout_is_the_workspace() {
+        assert!(
+            workspace_root().is_some(),
+            "cargo test runs inside a checkout that has crates/kebacc-codex"
+        );
     }
 
     #[test]

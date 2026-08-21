@@ -5,17 +5,32 @@ mod lock;
 mod log;
 mod oauth;
 mod pool;
-mod proc;
+mod proc {
+    pub use kebacc_core::proc::*;
+}
 mod provider;
-mod seal;
-mod term;
+mod seal {
+    pub use kebacc_core::seal::*;
+}
+mod term {
+    pub use kebacc_core::term::*;
+}
 mod usage;
 
 use cmd::Options;
 use provider::ProviderId;
 use term::{say, Color};
 
+/// Keychain / libsecret account this build stores the seal key under.
+/// Saved logins on existing machines only open if this stays this string.
+const SEAL_ACCOUNT: &str = "kebacc-switch";
+
+fn init() {
+    kebacc_core::seal::set_secret_account(SEAL_ACCOUNT);
+}
+
 fn main() {
+    init();
     cmd::update::sweep();
     let args: Vec<String> = std::env::args().skip(1).collect();
     std::process::exit(dispatch(&args));
@@ -41,7 +56,9 @@ fn usage_text() {
     println!(
         "  uninstall   take all of that back, leaving the saved logins (-Pool removes those too)"
     );
-    println!("  install-codex   clone, build and install the Codex half from its own branch");
+    println!(
+        "  install-codex   build and install the Codex half from this workspace (or clone master)"
+    );
     println!();
     println!("  list -Countdown   both quota windows of every saved account, with their resets (-Refresh reads them again first)");
     println!("  auto -Midtask     auto from a tool-use hook, at most once an interval");

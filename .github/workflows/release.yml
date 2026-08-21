@@ -6,7 +6,7 @@ name: release
 # finds its own file.
 on:
   push:
-    tags: ["kebacc-v*"]
+    tags: ["kebacc-v*", "kebacc-codex-v*", "kebacc-antigravity-v*"]
   workflow_dispatch:
     inputs:
       tag:
@@ -48,6 +48,25 @@ jobs:
         with:
           ref: ${{ inputs.tag || github.ref }}
 
+      - name: Which half this tag is
+        id: half
+        shell: bash
+        run: |
+          tag="${{ inputs.tag || github.ref_name }}"
+          if [[ "$tag" == kebacc-antigravity-v* ]]; then
+            echo "package=kebacc-antigravity" >> "$GITHUB_OUTPUT"
+            echo "bin=kebacc-antigravity" >> "$GITHUB_OUTPUT"
+            echo "bat=install-antigravity.bat" >> "$GITHUB_OUTPUT"
+          elif [[ "$tag" == kebacc-codex-v* ]]; then
+            echo "package=kebacc-codex" >> "$GITHUB_OUTPUT"
+            echo "bin=kebacc-codex" >> "$GITHUB_OUTPUT"
+            echo "bat=install-codex.bat" >> "$GITHUB_OUTPUT"
+          else
+            echo "package=kebacc" >> "$GITHUB_OUTPUT"
+            echo "bin=kebacc" >> "$GITHUB_OUTPUT"
+            echo "bat=install.bat" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Toolchain
         run: rustup toolchain install stable --profile minimal --target ${{ matrix.target }}
 
@@ -76,7 +95,7 @@ jobs:
 
       - name: Test
         if: '!matrix.cross'
-        run: cargo test --release --target ${{ matrix.target }} -p kebacc
+        run: cargo test --release --target ${{ matrix.target }} -p ${{ steps.half.outputs.package }}
 
       # The paths of the machine that built it have no business being in a
       # published binary.
@@ -84,21 +103,22 @@ jobs:
         shell: bash
         run: |
           export CARGO_ENCODED_RUSTFLAGS="--remap-path-prefix=$PWD=."
-          cargo build --release --target ${{ matrix.target }} -p kebacc
+          cargo build --release --target ${{ matrix.target }} -p ${{ steps.half.outputs.package }}
 
       - name: Name it after its platform
         shell: bash
         run: |
           mkdir -p dist
+          bin="${{ steps.half.outputs.bin }}"
           if [ "${{ runner.os }}" = "Windows" ]; then
-            cp "target/${{ matrix.target }}/release/kebacc.exe" "dist/kebacc-${{ matrix.target }}.exe"
+            cp "target/${{ matrix.target }}/release/${bin}.exe" "dist/${bin}-${{ matrix.target }}.exe"
           else
-            cp "target/${{ matrix.target }}/release/kebacc" "dist/kebacc-${{ matrix.target }}"
+            cp "target/${{ matrix.target }}/release/${bin}" "dist/${bin}-${{ matrix.target }}"
           fi
 
       - uses: actions/upload-artifact@v4
         with:
-          name: kebacc-${{ matrix.target }}
+          name: ${{ steps.half.outputs.bin }}-${{ matrix.target }}
           path: dist/*
           if-no-files-found: error
 
@@ -117,8 +137,21 @@ jobs:
           path: dist
           merge-multiple: true
 
-      # install.bat is published beside the binaries so a Windows machine with
-      # neither a clone nor a toolchain can start from one file. The other
+      - name: Which half this tag is
+        id: half
+        shell: bash
+        run: |
+          tag="${{ inputs.tag || github.ref_name }}"
+          if [[ "$tag" == kebacc-antigravity-v* ]]; then
+            echo "bat=install-antigravity.bat" >> "$GITHUB_OUTPUT"
+          elif [[ "$tag" == kebacc-codex-v* ]]; then
+            echo "bat=install-codex.bat" >> "$GITHUB_OUTPUT"
+          else
+            echo "bat=install.bat" >> "$GITHUB_OUTPUT"
+          fi
+
+      # The matching .bat is published beside the binaries so a Windows machine
+      # with neither a clone nor a toolchain can start from one file. The other
       # platforms need no script of their own: the binary is the installer, and
       # the README carries the one line that downloads it.
       - name: Attach everything to the release
@@ -126,7 +159,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ inputs.tag || github.ref_name }}
         run: |
-          cp install.bat dist/
+          cp "${{ steps.half.outputs.bat }}" dist/
           ls -l dist
           # The release is held as a draft until its binaries are on it. A
           # release page that exists with nothing to download is not much use

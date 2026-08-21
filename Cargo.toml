@@ -1,5 +1,10 @@
 [workspace]
-members = ["crates/kebacc"]
+members = [
+    "crates/kebacc-core",
+    "crates/kebacc",
+    "crates/kebacc-codex",
+    "crates/kebacc-antigravity",
+]
 resolver = "2"
 
 # The switcher is a short-lived command whose cost is process startup, not

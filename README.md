@@ -1,11 +1,10 @@
 <div align="center">
-⚠️⚠️⚠️⚠️⚠️⚠️⚠️( MADE FOR BOITE : https://github.com/beboite/boite )⚠️⚠️⚠️⚠️⚠️⚠️⚠️
 
+# kebacc
 
-# kebacc 
-
-**Several Claude Code logins on one machine, and one command to move
-between them when the one you are on runs out of quota.**
+Several logins on one machine, and one command to move between them when
+the one you are on runs out of quota. Built for
+[Boite](https://github.com/beboite/boite).
 
 [![release](https://img.shields.io/github/v/release/kebab1337420/kebacc-switch?sort=semver&label=release)](https://github.com/kebab1337420/kebacc-switch/releases)
 [![rust](https://img.shields.io/badge/rust-2021-orange)](https://www.rust-lang.org)
@@ -17,42 +16,54 @@ between them when the one you are on runs out of quota.**
 
 ## What it is
 
-A small Rust binary and a Claude Code plugin. It saves the login you are on,
-keeps the saved ones sealed on disk, reads each account's quota from the API,
-and moves you to one that still has room — on its own, at session start and
-again mid-task, before you notice you were capped.
+Three Rust binaries and three Claude Code plugins, one pool each:
 
 ```
-crates/kebacc/    the binary
-plugins/kebacc/   the slash commands, compiled into the binary
+crates/kebacc              Claude Code        kebacc
+crates/kebacc-codex        Codex              kebacc-codex
+crates/kebacc-antigravity  Antigravity        kebacc-antigravity
+crates/kebacc-core         shared helpers     (not installed)
 ```
+
+Each half saves the login you are on, seals it, reads quota, and moves you to
+an account that still has room, at session start and again mid-task. They
+install side by side into `~/.claude-tools`. Uninstalling one leaves the others
+alone.
+
+Shared slash commands (`/kebacc-list-all`, `/kebacc-auto-all`) are written by
+whoever is installed, and taken out only when the last half leaves.
 
 ---
 
 ## Install
 
+Pick the half you want. Each installer downloads that half's published binary
+by tag prefix, never GitHub's Latest label (that label can only point at one
+release, and this repository publishes three).
+
 ### Windows, no toolchain
 
-Download **`install.bat`** from the
-[latest release](https://github.com/kebab1337420/kebacc-switch/releases) and run
-it. It downloads the published binary and asks it to install itself, and needs
-no clone, no Rust and no administrator. Arguments go through to the installer,
-so `install.bat -StatusLine -AutoSwitch all` works.
+| Half | File | Tag prefix |
+| --- | --- | --- |
+| Claude | `install.bat` | `kebacc-v*` |
+| Codex | `install-codex.bat` | `kebacc-codex-v*` |
+| Antigravity | `install-antigravity.bat` | `kebacc-antigravity-v*` |
 
-There is nothing else to fetch: the slash commands travel inside the binary. The
-asset is taken through the GitHub API rather than through the plain download
-URL, which is served by a cache that keeps handing out the previous file for a
-while after an asset is replaced.
+Download the `.bat` from [the matching release](https://github.com/kebab1337420/kebacc-switch/releases)
+and run it. Arguments go through to the installer, so
+`install.bat -StatusLine -AutoSwitch claude` works. No clone, no Rust, no
+administrator.
+
+The asset is taken through the GitHub API rather than through the plain
+download URL, which is served by a cache that keeps handing out the previous
+file for a while after an asset is replaced.
 
 ### macOS and Linux, no toolchain
 
-One file, downloaded and asked to install itself. Pick the name for the machine
-you are on — `aarch64-apple-darwin`, `x86_64-apple-darwin`,
-`x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`:
-
-The Codex half is published from this repository too, so the list of releases
-is read rather than the `latest` endpoint: the file is picked by its own name,
-whichever half was released last.
+One file, downloaded and asked to install itself. Pick the name for the
+machine you are on (`aarch64-apple-darwin`, `x86_64-apple-darwin`,
+`x86_64-unknown-linux-gnu`, `aarch64-unknown-linux-gnu`) and the binary for
+the half (`kebacc`, `kebacc-codex`, `kebacc-antigravity`):
 
 ```sh
 name=kebacc-aarch64-apple-darwin
@@ -62,7 +73,8 @@ curl -fsSL "$url" -o /tmp/kebacc && chmod +x /tmp/kebacc
 /tmp/kebacc install --status-line --auto-switch claude
 ```
 
-With the `gh` CLI on the machine, the same thing is two lines:
+With the `gh` CLI on the machine, the same thing is two lines. Name the tag
+prefix, not `latest`:
 
 ```sh
 gh release download --repo kebab1337420/kebacc-switch --pattern kebacc-aarch64-apple-darwin --dir /tmp
@@ -77,14 +89,19 @@ with it, so the copy in `/tmp` can go afterwards.
 ```sh
 cargo build --release
 ./target/release/kebacc install
+./target/release/kebacc-codex install
+./target/release/kebacc-antigravity install
 ```
 
-The installer copies the binary into `~/.claude-tools`, then writes the hooks,
-the status line and the slash commands into your Claude Code settings. It backs
-the settings file up first and refuses to write a result that would not parse.
-`kebacc uninstall` takes all of it back out.
+`kebacc install-codex` builds the Codex half from this workspace (or clones
+`master` if this is not a checkout) and runs its installer.
 
-Every option is spelled both ways — `-StatusLine` and `--status-line` reach the
+The installer copies the binary into `~/.claude-tools`, then writes the hooks,
+the status line and the slash commands into your Claude Code settings. It
+backs the settings file up first and refuses to write a result that would not
+parse. `kebacc uninstall` takes that half back out.
+
+Every option is spelled both ways. `-StatusLine` and `--status-line` reach the
 same flag, so a habit from either shell works:
 
 | Option | Effect |
@@ -99,48 +116,63 @@ same flag, so a habit from either shell works:
 
 ## Slash commands
 
-Everything the plugin installs lives under the `/kebacc-` prefix.
+Everything the plugins install lives under the `/kebacc-` prefix.
 
 ### Accounts
 
 | Command | What it does |
 | --- | --- |
 | `/kebacc-add-claude` | save the Claude Code login you are on right now |
+| `/kebacc-add-codex` | save the Codex login you are on right now |
+| `/kebacc-add-antigravity` | save the Antigravity login you are on right now |
 | `/kebacc-remove-claude` | forget a saved Claude Code account |
+| `/kebacc-remove-codex` | forget a saved Codex account |
+| `/kebacc-remove-antigravity` | forget a saved Antigravity account |
 
 ### Looking
 
 | Command | What it does |
 | --- | --- |
 | `/kebacc-list-claude` | the saved Claude Code accounts |
+| `/kebacc-list-codex` | the saved Codex accounts |
+| `/kebacc-list-antigravity` | the saved Antigravity accounts |
+| `/kebacc-list-all` | every pool that is installed |
 
 A list command always asks the API rather than reading the cache, and always
-prints both quota windows with the time left until each one resets. There is
-nothing to pass and nothing else to run.
+prints both quota windows with the time left until each one resets.
 
 ### Moving
 
 | Command | What it does |
 | --- | --- |
 | `/kebacc-switch-claude` | change which saved Claude Code login the CLI uses |
+| `/kebacc-switch-codex` | change which saved Codex login the CLI uses |
+| `/kebacc-switch-antigravity` | change which saved Antigravity login the CLI uses |
 
 ### The auto-switch
 
 | Command | What it does |
 | --- | --- |
-| `/kebacc-auto-claude` | arm the auto-switch, session start and mid-task |
+| `/kebacc-auto-claude` | arm the Claude auto-switch, session start and mid-task |
+| `/kebacc-auto-codex` | arm the Codex auto-switch |
+| `/kebacc-auto-antigravity` | arm the Antigravity auto-switch |
+| `/kebacc-auto-all` | arm every pool that is installed |
 | `/kebacc-auto-toggle` | arm or disarm both auto hooks |
 
-Neither of these changes the account in use. Arming decides what the *next*
-sessions open on. Only `/kebacc-switch-claude` moves the login you are on right
-now.
+None of these changes the account in use. Arming decides what the next
+sessions open on. Only the `/kebacc-switch-*` commands move the login you are
+on right now.
 
 ### Upkeep
 
 | Command | What it does |
 | --- | --- |
-| `/kebacc-doctor` | check the install, the pool and the seals |
-| `/kebacc-update` | install the newest release |
+| `/kebacc-doctor` | check the Claude install, the pool and the seals |
+| `/kebacc-doctor-codex` | check the Codex install |
+| `/kebacc-doctor-antigravity` | check the Antigravity install |
+| `/kebacc-update` | install the newest Claude release |
+| `/kebacc-update-codex` | install the newest Codex release |
+| `/kebacc-update-antigravity` | install the newest Antigravity release |
 
 ---
 
@@ -163,26 +195,12 @@ kebacc refresh -Provider all                  # re-read the quotas, print nothin
 kebacc update
 ```
 
-`-Provider` takes `claude` — the only pool this binary knows — and defaults to
-it. `all` is still accepted, as a spelling of `claude`, so the hooks written
-before Codex moved out keep working.
+`-Provider` on `kebacc` takes `claude` and defaults to it. `all` is still
+accepted, as a spelling of `claude`, so hooks written before Codex moved out
+keep working. `kebacc-codex` and `kebacc-antigravity` take `codex` and
+`antigravity` the same way.
 
-**Codex**
-
-Codex lives in its own plugin, `kebacc-codex`, on the `Codex` branch of this
-repository. It has its own binary, its own pool and its own slash commands
-(`/kebacc-add-codex`, `/kebacc-list-codex`, `/kebacc-switch-codex`,
-`/kebacc-remove-codex`, `/kebacc-auto-codex`), and the two install side by
-side. It is published from this repository too, under `kebacc-codex-v*` tags,
-with an `install-codex.bat` of its own attached to the release. Both halves are
-picked by tag prefix rather than by the "Latest" label, which only one of them
-can carry.
-
-`kebacc install-codex` clones the branch, builds it with cargo and runs its
-installer, which is still the way to install a Codex half newer than its last
-release.
-
-**Exit codes**
+### Exit codes
 
 | Code | Meaning |
 | --- | --- |
@@ -200,19 +218,28 @@ release.
 
 | Path | What |
 | --- | --- |
-| `~/.claude-tools/` | the installed binary and its `.version` |
+| `~/.claude-tools/` | the installed binaries and their version markers |
+| `~/.claude-tools/.version` | Claude is installed |
+| `~/.claude-tools/.codex-version` | Codex is installed |
+| `~/.claude-tools/.antigravity-version` | Antigravity is installed |
 | `~/.claude/commands/kebacc-*.md` | the slash commands |
 | `~/.kebacc-switch/` | locks, stamps, update state |
 | `~/.kebacc-switch/kebacc.log` | what every switch did |
 | `~/.kebacc-switch-accounts/` | the Claude Code pool |
+| `~/.kebacc-switch-codex-accounts/` | the Codex pool |
+| `~/.kebacc-switch-antigravity-accounts/` | the Antigravity pool |
 
 Saved credentials are sealed before they touch disk: DPAPI on Windows, and
 AES-256-GCM under a key held by the macOS Keychain or by libsecret elsewhere.
 Each snapshot carries an HMAC-SHA256 stamp, so a pool file edited outside the
 tool is reported as changed rather than trusted.
 
-The full account of what is stored and what the hooks do is in
-[`plugins/kebacc/README.md`](plugins/kebacc/README.md).
+The keychain account names are load-bearing. Claude and Codex store the seal
+key under `kebacc-switch`. Antigravity stores it under `kebacc-antigravity`.
+Renaming either unlocks nothing already sealed.
+
+The full account of what is stored and what the hooks do is in each plugin's
+README under `plugins/`.
 
 ---
 
@@ -253,8 +280,8 @@ off; the file is rotated at 512 KB.
 
 ## Self-update
 
-At session start, at most once a day, the switcher asks this repository's
-releases whether a newer `kebacc-v*` tag exists and installs it in the
+At session start, at most once a day, each switcher asks this repository's
+releases whether a newer tag of its own prefix exists and installs it in the
 background. `KEBACC_SWITCH_UPDATE=off` stops that, and so does installing with
 `-NoAutoUpdate`.
 
@@ -266,20 +293,21 @@ somewhere else at compile time.
 ## Development
 
 ```sh
-cargo fmt
-cargo clippy --all-targets -- -D warnings
-cargo test
+cargo fmt --all -- --check
+cargo clippy --release --all-targets --workspace -- -D warnings
+cargo test --release --workspace
+cargo build --release
 ```
 
-The crate carries no comments: the code is meant to read without them, and the
-prose that explains a decision goes in a commit message or in this README.
+The crates carry comments only where a decision is not in the code. The prose
+that explains a decision goes in a commit message or in this README.
 
 ### Building a release binary
 
 rustc records the absolute path of every source file it compiles into the
 binary's panic metadata, which on a normal machine means the builder's home
-directory and username travel with every download. Published binaries are built
-with those paths remapped:
+directory and username travel with every download. Published binaries are
+built with those paths remapped:
 
 ```powershell
 $flags = @(
@@ -288,7 +316,7 @@ $flags = @(
     "--remap-path-prefix=$PWD=/src"
 )
 $env:CARGO_ENCODED_RUSTFLAGS = ($flags -join "`u{001f}")
-cargo build --release -p kebacc
+cargo build --release --workspace
 ```
 
 `CARGO_ENCODED_RUSTFLAGS` rather than `RUSTFLAGS` because the separator is a

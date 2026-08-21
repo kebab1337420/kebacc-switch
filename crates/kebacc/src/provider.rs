@@ -82,10 +82,12 @@ pub fn resolve(id: &str) -> Result<ProviderId, String> {
     }
     match key.as_str() {
         "claude" | "claude-code" | "claudecode" | "cc" | "anthropic" => Ok(ProviderId::Claude),
-        "codex" | "openai" | "chatgpt" | "gpt" => Err(
-            "Codex is not part of kebacc. It lives in the kebacc-codex plugin, on the Codex branch."
-                .to_string(),
-        ),
+        "codex" | "openai" | "chatgpt" | "gpt" => {
+            Err("Codex is not part of kebacc. Install kebacc-codex for it.".to_string())
+        }
+        "antigravity" | "agy" | "google" | "gemini" => {
+            Err("Antigravity is not part of kebacc. Install kebacc-antigravity for it.".to_string())
+        }
         _ => Err(format!(
             "Unknown provider '{id}'. Known providers: {}.",
             PROVIDER_IDS.join(", ")

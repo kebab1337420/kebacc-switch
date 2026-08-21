@@ -14,9 +14,11 @@
 //! It has to stop on its own, since nobody owns it. Two ends: the hooks stamp
 //! `session.beat` every time they run, and the watcher gives up once that stamp
 //! goes cold, which is what a closed CLI looks like from here. Failing that, it
-//! dies of old age.
+//! dies of old age. The Claude half keeps these unsuffixed names: they were the
+//! first ones on disk, and renaming them would leave a live watcher looking at
+//! a file nobody writes any more.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -64,7 +66,11 @@ fn now_ms() -> u128 {
 }
 
 fn stamp(name: &str) {
-    let _ = std::fs::write(state(name), now_ms().to_string());
+    let path = state(name);
+    if let Some(parent) = path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::write(path, now_ms().to_string());
 }
 
 /// How old a stamp is. Missing, unreadable, or dated in the future all read as
@@ -167,13 +173,17 @@ pub fn stop_and_wait(limit: Duration) -> bool {
     false
 }
 
-/// Whether a stop was asked for after this watcher started. A stamp older than
+/// Whether a stop stamp is at least as new as this watcher. A stamp older than
 /// us belongs to a previous round and is none of our business.
-fn stop_requested(started_ms: u128) -> bool {
-    std::fs::read_to_string(state(STOP))
+fn stop_after(stamp: &Path, started_ms: u128) -> bool {
+    std::fs::read_to_string(stamp)
         .ok()
         .and_then(|text| text.trim().parse::<u128>().ok())
         .is_some_and(|asked| asked >= started_ms)
+}
+
+fn stop_requested(started_ms: u128) -> bool {
+    stop_after(&state(STOP), started_ms)
 }
 
 /// The loop itself. Runs until the session it serves goes quiet.
@@ -250,16 +260,31 @@ mod tests {
 
     #[test]
     fn a_stop_asked_for_before_we_started_is_not_ours() {
-        stamp(STOP);
+        let (dir, stamp) = unique_stamp("before");
+        let _ = std::fs::write(&stamp, now_ms().to_string());
         let later = now_ms() + 60_000;
-        assert!(!stop_requested(later));
+        assert!(!stop_after(&stamp, later));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
     fn a_stop_asked_for_since_we_started_stops_us() {
+        let (dir, stamp) = unique_stamp("since");
         let started = now_ms();
-        stamp(STOP);
-        assert!(stop_requested(started));
+        let _ = std::fs::write(&stamp, now_ms().to_string());
+        assert!(stop_after(&stamp, started));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    fn unique_stamp(label: &str) -> (PathBuf, PathBuf) {
+        let dir = std::env::temp_dir().join(format!(
+            "kebacc-watch-{label}-{}-{}",
+            std::process::id(),
+            now_ms()
+        ));
+        let _ = std::fs::create_dir_all(&dir);
+        let stamp = dir.join("stop");
+        (dir, stamp)
     }
 
     #[test]

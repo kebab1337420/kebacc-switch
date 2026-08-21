@@ -94,7 +94,10 @@ fn is_switcher(command: &str) -> bool {
         .unwrap_or(word)
         .to_lowercase();
     let program = program.strip_suffix(".exe").unwrap_or(&program);
-    matches!(program, "kebacc" | "kebacc-switch" | "kebacc-codex")
+    matches!(
+        program,
+        "kebacc" | "kebacc-switch" | "kebacc-codex" | "kebacc-antigravity"
+    )
 }
 
 fn stamp_file() -> PathBuf {
@@ -173,6 +176,19 @@ mod tests {
     fn the_windows_binary_counts_too() {
         assert!(about_us(
             r#"{"tool_name":"Bash","tool_input":{"command":"\"C:\\Users\\x\\.claude-tools\\kebacc.exe\" doctor"}}"#
+        ));
+    }
+
+    #[test]
+    fn the_other_halves_count_too() {
+        assert!(about_us(
+            r#"{"tool_name":"Bash","tool_input":{"command":"~/.claude-tools/kebacc-codex list"}}"#
+        ));
+        assert!(about_us(
+            r#"{"tool_name":"Bash","tool_input":{"command":"~/.claude-tools/kebacc-antigravity list"}}"#
+        ));
+        assert!(about_us(
+            r#"{"tool_name":"Bash","tool_input":{"command":"~/.claude-tools/kebacc-switch list"}}"#
         ));
     }
 

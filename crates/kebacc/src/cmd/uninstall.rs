@@ -19,10 +19,6 @@ const WATCHER_WAIT: Duration = Duration::from_secs(5);
 /// How long the copy left behind waits for the name of the binary to come free.
 const REAP_WAIT: Duration = Duration::from_secs(60);
 
-/// The marker kebacc-codex writes beside ours. While it is there, the shared
-/// settings this uninstaller would otherwise reset belong to it too.
-const CODEX_MARKER: &str = ".codex-version";
-
 pub fn run(opts: &Options) -> i32 {
     let tools = super::install::tools_dir(opts);
 
@@ -47,10 +43,11 @@ pub fn run(opts: &Options) -> i32 {
         super::arm::run("claude", true, super::arm::Mode::Drop);
         super::wire::run(Some(false), None, true);
         // KEBACC_SWITCH_UPDATE is a setting about a binary that is about to be
-        // gone, and left there it would silence the next install. kebacc-codex
-        // reads the same name, so it stays while that half is installed:
-        // turning its updates back on is not this uninstaller's call.
-        if !tools.join(CODEX_MARKER).exists() {
+        // gone, and left there it would silence the next install. The other
+        // halves read the same name, so it stays while any of them is
+        // installed: turning their updates back on is not this uninstaller's
+        // call.
+        if !super::install::sibling_installed(&tools) {
             super::wire::run(None, Some(true), true);
         }
     } else {
@@ -126,6 +123,10 @@ pub fn run(opts: &Options) -> i32 {
         if gone > 0 {
             say(&format!("Removed {gone} slash command(s)"), Color::Green);
         }
+        // With this half gone the -all pair has nothing to span unless another
+        // half is still standing. The marker above is already off the disk, so
+        // this counts what is left.
+        super::install::sync_all_commands(&tools);
     }
 
     if !opts.no_profile_edit {

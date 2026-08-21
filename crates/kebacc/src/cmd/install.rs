@@ -98,17 +98,35 @@ const DEAD_COMMANDS: &[&str] = &["refresh-a.md", "refresh-t.md"];
 /// table would start shipping them again.
 pub const RETIRED: &[&str] = &["kebacc-install-codex.md"];
 
-/// Commands another half of this repository writes into the same directory.
-/// kebacc-antigravity ships both of these today, so a name we stopped shipping
-/// is not a name we may delete: sweeping it takes a live command away from a
-/// plugin that is still installed, on every update.
-///
-/// `kebacc-auto-toggle.md` is not here. Both halves ship it, and ours is the
-/// one this binary has to keep rewriting.
-const SIBLINGS: &[&str] = &["kebacc-auto-all.md", "kebacc-list-all.md"];
+/// The commands that only mean something with more than one pool present.
+/// Neither half owns them: every installer writes them, and the last
+/// uninstaller takes them out.
+pub const ALL_COMMANDS: &[(&str, &str)] = &[
+    (
+        "kebacc-auto-all.md",
+        include_str!("../../../../plugins/kebacc-all/kebacc-auto-all.md"),
+    ),
+    (
+        "kebacc-list-all.md",
+        include_str!("../../../../plugins/kebacc-all/kebacc-list-all.md"),
+    ),
+];
 
 /// The marker that says which version of the plugin is installed here.
 pub const VERSION_FILE: &str = ".version";
+/// The marker kebacc-codex writes beside ours.
+pub const CODEX_MARKER: &str = ".codex-version";
+/// The marker kebacc-antigravity writes beside ours.
+pub const ANTIGRAVITY_MARKER: &str = ".antigravity-version";
+
+const MARKERS: &[&str] = &[VERSION_FILE, CODEX_MARKER, ANTIGRAVITY_MARKER];
+
+/// Another half is still installed in this tools directory.
+pub fn sibling_installed(tools: &Path) -> bool {
+    MARKERS
+        .iter()
+        .any(|marker| *marker != VERSION_FILE && tools.join(marker).is_file())
+}
 
 /// The line the shell profile is keyed on, so an uninstall can find its own
 /// block and leave everything else in the file alone.
@@ -215,8 +233,17 @@ pub fn run(opts: &Options) -> i32 {
 
     // The marker says what the binary answered, not what this installer thinks
     // it is: `-Binary` can hand over another build, and a marker that disagrees
-    // with the file beside it sends `update` in a circle.
+    // with the file beside it sends `update` in a circle. It is written before
+    // the -all commands are synced, or this half would not count itself.
     let _ = crate::jsonio::write_text(&tools.join(VERSION_FILE), &installed);
+
+    let spanning = sync_all_commands(&tools);
+    if spanning > 0 {
+        say(
+            &format!("Installed the {spanning} command(s) that span every pool"),
+            Color::Green,
+        );
+    }
 
     if !opts.no_profile_edit {
         profile(&entry);
@@ -354,16 +381,40 @@ fn commands() -> Result<PathBuf, String> {
     Ok(dir)
 }
 
+/// The -all pair exists exactly when at least one half does. Written on
+/// install, taken away only when this uninstaller is the last one standing.
+pub fn sync_all_commands(tools: &Path) -> usize {
+    let dir = crate::provider::claude_config_dir().join("commands");
+    let keep = tools.join(VERSION_FILE).is_file() || sibling_installed(tools);
+    let mut touched = 0;
+    for (name, body) in ALL_COMMANDS {
+        let path = dir.join(name);
+        if keep {
+            if std::fs::create_dir_all(&dir).is_ok() && std::fs::write(&path, body).is_ok() {
+                touched += 1;
+            }
+        } else if path.is_file() && std::fs::remove_file(&path).is_ok() {
+            touched += 1;
+        }
+    }
+    if keep {
+        touched
+    } else {
+        0
+    }
+}
+
 /// Every name this plugin has ever installed a command under, which is also
 /// every name it takes away. kebacc-codex and kebacc-antigravity install into
 /// this same directory, so their names are not ours to delete. The one
-/// exception is a name we ship ourselves, which is ours to replace.
+/// exception is a name we ship ourselves, which is ours to replace. The -all
+/// pair is not ours: whichever half is still standing owns it.
 pub fn ours(name: &str) -> bool {
+    if ALL_COMMANDS.iter().any(|(shipped, _)| *shipped == name) {
+        return false;
+    }
     if COMMANDS.iter().any(|(shipped, _)| *shipped == name) {
         return true;
-    }
-    if SIBLINGS.contains(&name) {
-        return false;
     }
     if DEAD_COMMANDS.contains(&name) {
         return true;
@@ -556,13 +607,13 @@ mod tests {
     }
 
     #[test]
-    fn a_name_a_sibling_still_ships_is_never_swept() {
-        for name in SIBLINGS {
-            assert!(!ours(name), "{name} is live in another plugin");
+    fn neither_half_sweeps_the_commands_that_span_every_pool() {
+        for (name, _) in ALL_COMMANDS {
+            assert!(!ours(name), "{name} belongs to whichever half is left");
             assert!(!RETIRED.contains(name), "{name} cannot be retired and live");
             assert!(
                 !COMMANDS.iter().any(|(shipped, _)| shipped == name),
-                "{name} is not ours to ship"
+                "{name} is not ours to ship as a Claude-only command"
             );
         }
     }
@@ -591,7 +642,7 @@ mod tests {
 
     #[test]
     fn the_shipped_commands_carry_their_front_matter() {
-        for (name, body) in COMMANDS {
+        for (name, body) in COMMANDS.iter().chain(ALL_COMMANDS) {
             assert!(body.starts_with("---"), "{name} has no front matter");
         }
     }

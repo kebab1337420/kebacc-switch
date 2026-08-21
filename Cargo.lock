@@ -605,16 +605,56 @@ dependencies = [
 name = "kebacc"
 version = "1.0.0"
 dependencies = [
- "aes-gcm",
  "base64 0.22.1",
  "chrono",
  "dirs",
- "getrandom 0.3.4",
  "hmac",
+ "kebacc-core",
  "serde",
  "serde_json",
  "sha2",
  "ureq",
+]
+
+[[package]]
+name = "kebacc-antigravity"
+version = "1.0.0"
+dependencies = [
+ "base64 0.22.1",
+ "chrono",
+ "dirs",
+ "hmac",
+ "kebacc-core",
+ "serde",
+ "serde_json",
+ "sha2",
+ "ureq",
+ "windows-sys 0.60.2",
+]
+
+[[package]]
+name = "kebacc-codex"
+version = "1.0.0"
+dependencies = [
+ "base64 0.22.1",
+ "chrono",
+ "dirs",
+ "hmac",
+ "kebacc-core",
+ "serde",
+ "serde_json",
+ "sha2",
+ "ureq",
+]
+
+[[package]]
+name = "kebacc-core"
+version = "0.1.0"
+dependencies = [
+ "aes-gcm",
+ "base64 0.22.1",
+ "getrandom 0.3.4",
+ "serde_json",
  "windows-sys 0.60.2",
 ]
 

@@ -28,7 +28,9 @@ use std::process::Command;
 pub const COMMANDS: &[(&str, &str)] = &[
     (
         "kebacc-add-antigravity.md",
-        include_str!("../../../../plugins/kebacc-antigravity/src/commands/kebacc-add-antigravity.md"),
+        include_str!(
+            "../../../../plugins/kebacc-antigravity/src/commands/kebacc-add-antigravity.md"
+        ),
     ),
     (
         "kebacc-auto-all.md",
@@ -36,7 +38,9 @@ pub const COMMANDS: &[(&str, &str)] = &[
     ),
     (
         "kebacc-auto-antigravity.md",
-        include_str!("../../../../plugins/kebacc-antigravity/src/commands/kebacc-auto-antigravity.md"),
+        include_str!(
+            "../../../../plugins/kebacc-antigravity/src/commands/kebacc-auto-antigravity.md"
+        ),
     ),
     (
         "kebacc-auto-toggle.md",
@@ -44,7 +48,9 @@ pub const COMMANDS: &[(&str, &str)] = &[
     ),
     (
         "kebacc-doctor-antigravity.md",
-        include_str!("../../../../plugins/kebacc-antigravity/src/commands/kebacc-doctor-antigravity.md"),
+        include_str!(
+            "../../../../plugins/kebacc-antigravity/src/commands/kebacc-doctor-antigravity.md"
+        ),
     ),
     (
         "kebacc-list-all.md",
@@ -52,19 +58,27 @@ pub const COMMANDS: &[(&str, &str)] = &[
     ),
     (
         "kebacc-list-antigravity.md",
-        include_str!("../../../../plugins/kebacc-antigravity/src/commands/kebacc-list-antigravity.md"),
+        include_str!(
+            "../../../../plugins/kebacc-antigravity/src/commands/kebacc-list-antigravity.md"
+        ),
     ),
     (
         "kebacc-remove-antigravity.md",
-        include_str!("../../../../plugins/kebacc-antigravity/src/commands/kebacc-remove-antigravity.md"),
+        include_str!(
+            "../../../../plugins/kebacc-antigravity/src/commands/kebacc-remove-antigravity.md"
+        ),
     ),
     (
         "kebacc-switch-antigravity.md",
-        include_str!("../../../../plugins/kebacc-antigravity/src/commands/kebacc-switch-antigravity.md"),
+        include_str!(
+            "../../../../plugins/kebacc-antigravity/src/commands/kebacc-switch-antigravity.md"
+        ),
     ),
     (
         "kebacc-update-antigravity.md",
-        include_str!("../../../../plugins/kebacc-antigravity/src/commands/kebacc-update-antigravity.md"),
+        include_str!(
+            "../../../../plugins/kebacc-antigravity/src/commands/kebacc-update-antigravity.md"
+        ),
     ),
 ];
 
@@ -235,7 +249,16 @@ pub fn run(opts: &Options) -> i32 {
         // -Merge, not a plain arm: a hook already armed on a scope that covers
         // the other half too goes back with that scope intact. Installing this
         // plugin must not narrow what somebody else is running.
-        if !ran(&entry, &["arm", "-Provider", crate::provider::PROVIDER_ID, "-Merge", "-Quiet"]) {
+        if !ran(
+            &entry,
+            &[
+                "arm",
+                "-Provider",
+                crate::provider::PROVIDER_ID,
+                "-Merge",
+                "-Quiet",
+            ],
+        ) {
             say("Could not arm the auto-switch.", Color::Red);
             return 1;
         }
@@ -258,7 +281,10 @@ pub fn run(opts: &Options) -> i32 {
         "  kebacc-antigravity list      what is saved, and its quota",
         Color::Dim,
     );
-    say("  kebacc-antigravity doctor    check everything", Color::Dim);
+    say(
+        "  kebacc-antigravity doctor    check everything",
+        Color::Dim,
+    );
     0
 }
 
@@ -396,7 +422,10 @@ fn profile(entry: &Path) {
             let updated = repoint(&existing, entry, &path);
             if updated != existing && std::fs::write(&path, &updated).is_ok() {
                 say(
-                    &format!("Pointed kebacc-antigravity in {} at the binary", path.display()),
+                    &format!(
+                        "Pointed kebacc-antigravity in {} at the binary",
+                        path.display()
+                    ),
                     Color::Green,
                 );
             } else {
@@ -448,7 +477,10 @@ fn function_line(entry: &Path, profile: &Path) -> String {
         .extension()
         .is_some_and(|kind| kind.eq_ignore_ascii_case("ps1"))
     {
-        format!("function kebacc-antigravity {{ & \"{}\" @args }}", entry.display())
+        format!(
+            "function kebacc-antigravity {{ & \"{}\" @args }}",
+            entry.display()
+        )
     } else {
         format!("kebacc-antigravity() {{ \"{}\" \"$@\"; }}", entry.display())
     }
@@ -523,7 +555,10 @@ mod tests {
 
     #[test]
     fn a_powershell_profile_gets_the_powershell_spelling() {
-        let line = function_line(Path::new("C:/tools/kebacc-antigravity.exe"), Path::new("p.ps1"));
+        let line = function_line(
+            Path::new("C:/tools/kebacc-antigravity.exe"),
+            Path::new("p.ps1"),
+        );
         assert!(line.starts_with("function kebacc-antigravity"));
         let line = function_line(Path::new("/tools/kebacc-antigravity"), Path::new(".zshrc"));
         assert!(line.starts_with("kebacc-antigravity()"));
@@ -534,7 +569,11 @@ mod tests {
         let before = format!(
             "keep me\n{PROFILE_MARKER}\nkebacc-antigravity() {{ \"/old\" \"$@\"; }}\nkeep me too\n"
         );
-        let after = repoint(&before, Path::new("/new/kebacc-antigravity"), Path::new(".zshrc"));
+        let after = repoint(
+            &before,
+            Path::new("/new/kebacc-antigravity"),
+            Path::new(".zshrc"),
+        );
         assert!(after.contains("keep me\n"));
         assert!(after.contains("keep me too"));
         assert!(after.contains("/new/kebacc-antigravity"));

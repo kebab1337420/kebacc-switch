@@ -35,7 +35,10 @@ pub fn run(opts: &Options) -> i32 {
         Ok(Some(release)) => release,
         Ok(None) => {
             if !opts.quiet {
-                say(&format!("kebacc-antigravity {here} is the latest."), Color::Dim);
+                say(
+                    &format!("kebacc-antigravity {here} is the latest."),
+                    Color::Dim,
+                );
             }
             return 0;
         }
@@ -48,7 +51,10 @@ pub fn run(opts: &Options) -> i32 {
     };
     if !newer(&release.version, &here) {
         if !opts.quiet {
-            say(&format!("kebacc-antigravity {here} is the latest."), Color::Dim);
+            say(
+                &format!("kebacc-antigravity {here} is the latest."),
+                Color::Dim,
+            );
         }
         return 0;
     }
@@ -277,7 +283,10 @@ fn asset_name() -> String {
         ("linux", "aarch64") => "aarch64-unknown-linux-gnu",
         _ => "unsupported",
     };
-    format!("kebacc-antigravity-{triple}{}", std::env::consts::EXE_SUFFIX)
+    format!(
+        "kebacc-antigravity-{triple}{}",
+        std::env::consts::EXE_SUFFIX
+    )
 }
 
 fn newer(candidate: &str, current: &str) -> bool {

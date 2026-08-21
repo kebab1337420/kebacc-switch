@@ -1,7 +1,8 @@
 # kebacc-antigravity
 
-Saves the Antigravity login currently in use, seals the saved ones on disk,
-reads each account's quota, and switches to one that still has room. The binary
+Saves the Antigravity login currently in use, seals it when an OS secret store
+is available, reads each account's quota, and switches to one that still has
+room. The binary
 lives in `crates/kebacc-antigravity/`. The slash commands it carries live in
 `plugins/kebacc-antigravity/`.
 

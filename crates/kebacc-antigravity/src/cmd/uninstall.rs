@@ -136,7 +136,10 @@ pub fn run(opts: &Options) -> i32 {
     if opts.pool {
         if pool.is_dir() {
             let _ = std::fs::remove_dir_all(&pool);
-            say(&format!("Deleted the pool {}", pool.display()), Color::Yellow);
+            say(
+                &format!("Deleted the pool {}", pool.display()),
+                Color::Yellow,
+            );
         }
     } else if pool.is_dir() {
         say(
@@ -176,7 +179,10 @@ fn settings_point_here(tools: &Path) -> bool {
         return true;
     };
     let mut ours = Vec::new();
-    if let Some(line) = settings.get("statusLine").and_then(|line| line.get("command")) {
+    if let Some(line) = settings
+        .get("statusLine")
+        .and_then(|line| line.get("command"))
+    {
         if let Some(text) = line.as_str() {
             ours.push(text.to_string());
         }
@@ -317,7 +323,11 @@ fn sweep_reapers() {
         let working = entry
             .metadata()
             .and_then(|about| about.modified())
-            .and_then(|then| std::time::SystemTime::now().duration_since(then).map_err(|_| std::io::Error::other("in the future")))
+            .and_then(|then| {
+                std::time::SystemTime::now()
+                    .duration_since(then)
+                    .map_err(|_| std::io::Error::other("in the future"))
+            })
             .is_ok_and(|since| since < REAP_WAIT);
         if !working {
             let _ = std::fs::remove_file(entry.path());
@@ -329,7 +339,11 @@ fn sweep_reapers() {
 /// on its way out does not count: it is either gone already or about to be.
 fn empty(tools: &Path) -> bool {
     let exe = super::install::exe_name();
-    let ours = [exe.clone(), format!("{exe}.old"), "kebacc-antigravity.old".into()];
+    let ours = [
+        exe.clone(),
+        format!("{exe}.old"),
+        "kebacc-antigravity.old".into(),
+    ];
     let Ok(entries) = std::fs::read_dir(tools) else {
         return false;
     };
@@ -441,7 +455,10 @@ fn profiles(tools: &Path) {
             .any(|line| level(line).contains(&wanted))
         {
             say(
-                &format!("Left the kebacc-antigravity line in {} alone.", path.display()),
+                &format!(
+                    "Left the kebacc-antigravity line in {} alone.",
+                    path.display()
+                ),
                 Color::Dim,
             );
             continue;

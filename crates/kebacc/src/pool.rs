@@ -500,8 +500,13 @@ mod tests {
             Some("2026-01-01T00:00:00Z")
         );
         assert!(entry.cache.is_some());
-        // The stamp is written again, so the pool still knows the account.
-        assert!(matches!(entry.trust, Trust::Trusted));
+        // The stamp is written again, so the pool still knows the account. A
+        // machine with no secret backend, which is most CI Linux, holds no key
+        // to stamp with and reads every snapshot as unverified. What has to
+        // hold everywhere is that the rewrite never reads as CHANGED.
+        let stamped = Pool::new(&provider).key(false).is_some();
+        assert!(matches!(entry.trust, Trust::Trusted | Trust::NoKey));
+        assert!(!stamped || matches!(entry.trust, Trust::Trusted));
         let _ = std::fs::remove_dir_all(&provider.store);
     }
 

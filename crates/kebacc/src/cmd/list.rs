@@ -14,9 +14,9 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
         say("No accounts saved yet.", Color::Yellow);
         say(
             &format!(
-                "Log in to {}, then run: kebacc add -Provider {}",
+                "Log in to {}, then run: kebacc add {}",
                 provider.label,
-                provider.id.as_str()
+                crate::provider::Wanted::flag_of(provider.id)
             ),
             Color::Dim,
         );

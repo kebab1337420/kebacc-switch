@@ -261,6 +261,13 @@ fn sha256_hex(text: &str) -> String {
     digest.iter().map(|b| format!("{b:02x}")).collect()
 }
 
+/// A short, stable name for an account, taken from a secret that must not be
+/// stored or shown. Antigravity has no account id of its own; the refresh
+/// token is the value that stays put, so the digest is what is filed.
+pub fn short_hash(text: &str) -> String {
+    sha256_hex(text).chars().take(12).collect()
+}
+
 fn cred_hash(creds_raw: Option<&str>) -> String {
     let Some(raw) = creds_raw else {
         return "none".into();
@@ -286,6 +293,16 @@ fn cred_hash(creds_raw: Option<&str>) -> String {
     }
     if let Some(key) = jsonio::str_of(&creds, "OPENAI_API_KEY") {
         return sha256_hex(&key);
+    }
+    if let Some(token) = crate::live::token_of(&creds) {
+        // The access token is left out: Antigravity refreshes it behind this
+        // tool's back, and a hash that moved every hour would call every saved
+        // login tampered with.
+        return sha256_hex(&format!(
+            "{}|{}",
+            jsonio::str_of(token, "refresh_token").unwrap_or_default(),
+            jsonio::str_of(token, "id_token").unwrap_or_default(),
+        ));
     }
     "none".into()
 }

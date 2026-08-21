@@ -1,7 +1,6 @@
 pub mod add;
 pub mod arm;
 pub mod auto;
-pub mod codex;
 pub mod countdown;
 pub mod doctor;
 pub mod install;
@@ -18,10 +17,11 @@ pub mod wire;
 
 use crate::live;
 use crate::pool::Entry;
-use crate::provider::Provider;
+use crate::provider::{Provider, Wanted};
 
 #[derive(Default)]
 pub struct Options {
+    pub wanted: Wanted,
     pub email: Option<String>,
     pub quiet: bool,
     pub hook: bool,
@@ -51,10 +51,6 @@ pub struct Options {
     pub no_profile_edit: bool,
     /// `uninstall -Pool`: delete the saved logins too.
     pub pool: bool,
-    /// Where `install-codex` clones its branch from, and which branch.
-    pub source: Option<String>,
-    pub branch: Option<String>,
-    pub keep_checkout: bool,
 }
 
 pub fn current<'a>(provider: &Provider, pool: &'a [Entry]) -> Option<&'a Entry> {

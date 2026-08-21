@@ -1,7 +1,7 @@
 use crate::jsonio;
 use crate::lock;
 use crate::pool::Entry;
-use crate::provider::Provider;
+use crate::provider::{Provider, ProviderId};
 use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 use std::path::Path;
@@ -210,10 +210,22 @@ pub fn window_now(value: Option<&Value>) -> Option<Window> {
     })
 }
 
-pub fn access_token(creds_raw: Option<&str>) -> Option<String> {
-    let creds: Value = serde_json::from_str(creds_raw?).ok()?;
-    let oauth = creds.get("claudeAiOauth").filter(|v| !v.is_null())?;
-    jsonio::str_of(oauth, "accessToken")
+pub fn access_token(provider: &Provider, creds_raw: Option<&str>) -> Option<String> {
+    match provider.id {
+        ProviderId::Claude => {
+            let creds: Value = serde_json::from_str(creds_raw?).ok()?;
+            let oauth = creds.get("claudeAiOauth").filter(|v| !v.is_null())?;
+            jsonio::str_of(oauth, "accessToken")
+        }
+        ProviderId::Codex => {
+            let creds: Value = serde_json::from_str(creds_raw?).ok()?;
+            if let Some(tokens) = creds.get("tokens").filter(|v| !v.is_null()) {
+                return jsonio::str_of(tokens, "access_token");
+            }
+            jsonio::str_of(&creds, "OPENAI_API_KEY")
+        }
+        ProviderId::Antigravity => antigravity_access_token(creds_raw),
+    }
 }
 
 pub fn agent() -> ureq::Agent {
@@ -259,7 +271,15 @@ fn get_json(url: &str, headers: &[(&str, &str)]) -> Option<Value> {
     }
 }
 
-pub fn fetch(token: Option<&str>) -> Option<Usage> {
+pub fn fetch(provider: &Provider, token: Option<&str>) -> Option<Usage> {
+    match provider.id {
+        ProviderId::Claude => fetch_claude(token),
+        ProviderId::Codex => fetch_codex(token),
+        ProviderId::Antigravity => fetch_antigravity(token),
+    }
+}
+
+fn fetch_claude(token: Option<&str>) -> Option<Usage> {
     let token = token?;
     let raw = get_json(
         "https://api.anthropic.com/api/oauth/usage",
@@ -272,6 +292,22 @@ pub fn fetch(token: Option<&str>) -> Option<Usage> {
     Some(Usage {
         five_hour: window_from(raw.get("five_hour")),
         seven_day: window_from(raw.get("seven_day")),
+    })
+}
+
+fn fetch_codex(token: Option<&str>) -> Option<Usage> {
+    let token = token?;
+    if token.starts_with("sk-") {
+        return None;
+    }
+    let raw = get_json(
+        "https://chatgpt.com/backend-api/codex/usage",
+        &[("Authorization", &format!("Bearer {token}"))],
+    )?;
+    let limits = raw.get("rate_limits").filter(|v| !v.is_null())?;
+    Some(Usage {
+        five_hour: window_from(limits.get("primary")),
+        seven_day: window_from(limits.get("secondary")),
     })
 }
 
@@ -386,15 +422,15 @@ pub fn for_entry(provider: &Provider, entry: &Entry, force: bool) -> Option<Usag
             "{}: live token {}, snapshot token {}",
             entry.email,
             if live.is_some() { "yes" } else { "no" },
-            if access_token(entry.creds.as_deref()).is_some() {
+            if access_token(provider, entry.creds.as_deref()).is_some() {
                 "yes"
             } else {
                 "no"
             }
         ));
     }
-    let token = live.or_else(|| access_token(entry.creds.as_deref()));
-    match fetch(token.as_deref()) {
+    let token = live.or_else(|| access_token(provider, entry.creds.as_deref()));
+    match fetch(provider, token.as_deref()) {
         Some(usage) => {
             save_cache(&entry.file, &usage);
             Some(usage)
@@ -409,7 +445,161 @@ fn live_token(provider: &Provider, entry: &Entry) -> Option<String> {
     if email != entry.email.to_lowercase() {
         return None;
     }
-    access_token(crate::live::creds_raw(provider).as_deref())
+    access_token(provider, crate::live::creds_raw(provider).as_deref())
+}
+
+const OAUTH_CLIENT_ID: &str =
+    "1071006060591-tmhssin2h21lcre235vtolojh4g403ep.apps.googleusercontent.com";
+const OAUTH_CLIENT_SECRET: &str = "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";
+const OAUTH_TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
+const EXPIRY_MARGIN_SECONDS: i64 = 120;
+const QUOTA_URLS: [&str; 3] = [
+    "https://daily-cloudcode-pa.sandbox.googleapis.com/v1internal:fetchAvailableModels",
+    "https://daily-cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels",
+    "https://cloudcode-pa.googleapis.com/v1internal:fetchAvailableModels",
+];
+const LOAD_PROJECT_URL: &str = "https://cloudcode-pa.googleapis.com/v1internal:loadCodeAssist";
+const USER_AGENT: &str = "antigravity/windows/amd64";
+
+fn antigravity_access_token(creds_raw: Option<&str>) -> Option<String> {
+    let creds: Value = serde_json::from_str(creds_raw?).ok()?;
+    let token = crate::live::token_of(&creds)?;
+    let live = jsonio::str_of(token, "access_token").filter(|_| !ag_expired(token));
+    if let Some(token) = live {
+        return Some(token);
+    }
+    ag_refreshed(&jsonio::str_of(token, "refresh_token")?)
+}
+
+fn ag_expired(token: &Value) -> bool {
+    let stated = jsonio::str_of(token, "expiry")
+        .and_then(|at| parse_time(&at))
+        .or_else(|| {
+            token
+                .get("expiry_timestamp")
+                .and_then(Value::as_f64)
+                .and_then(|secs| DateTime::from_timestamp(secs as i64, 0))
+        });
+    let Some(at) = stated else {
+        return true;
+    };
+    at <= Utc::now() + chrono::Duration::seconds(EXPIRY_MARGIN_SECONDS)
+}
+
+fn ag_refreshed(refresh_token: &str) -> Option<String> {
+    let form = [
+        ("client_id", OAUTH_CLIENT_ID),
+        ("client_secret", OAUTH_CLIENT_SECRET),
+        ("refresh_token", refresh_token),
+        ("grant_type", "refresh_token"),
+    ];
+    let mut response = match agent().post(OAUTH_TOKEN_URL).send_form(form) {
+        Ok(response) => response,
+        Err(problem) => {
+            debug(&format!("the token could not be refreshed: {problem}"));
+            return None;
+        }
+    };
+    if !response.status().is_success() {
+        debug(&format!(
+            "the token could not be refreshed: Google answered {}",
+            response.status()
+        ));
+        return None;
+    }
+    let body = response.body_mut().read_json::<Value>().ok()?;
+    jsonio::str_of(&body, "access_token")
+}
+
+pub fn email_from_google(creds: &Value) -> Option<String> {
+    let raw = serde_json::to_string(creds).ok()?;
+    let token = antigravity_access_token(Some(&raw))?;
+    let info = get_json(
+        "https://www.googleapis.com/oauth2/v3/userinfo",
+        &[("Authorization", &format!("Bearer {token}"))],
+    )?;
+    jsonio::str_of(&info, "email")
+}
+
+fn post_json(url: &str, token: &str, body: Value) -> Result<Value, u16> {
+    let sent = agent()
+        .post(url)
+        .header("Authorization", &format!("Bearer {token}"))
+        .header("User-Agent", USER_AGENT)
+        .send_json(&body);
+    let mut response = match sent {
+        Ok(response) => response,
+        Err(ureq::Error::StatusCode(code)) => {
+            debug(&format!("{url} answered {code}"));
+            return Err(code);
+        }
+        Err(problem) => {
+            debug(&format!("{url} did not answer: {problem}"));
+            return Err(0);
+        }
+    };
+    response.body_mut().read_json::<Value>().map_err(|problem| {
+        debug(&format!("{url} answered something unreadable: {problem}"));
+        0
+    })
+}
+
+fn project_of(token: &str) -> Option<String> {
+    let body = post_json(
+        LOAD_PROJECT_URL,
+        token,
+        json!({ "metadata": { "ideType": "ANTIGRAVITY" } }),
+    )
+    .ok()?;
+    jsonio::str_of(&body, "cloudaicompanionProject")
+}
+
+fn fetch_antigravity(token: Option<&str>) -> Option<Usage> {
+    let token = token?;
+    let project = project_of(token);
+    let body = match &project {
+        Some(project) => json!({ "project": project }),
+        None => json!({}),
+    };
+    let mut answer = None;
+    for url in QUOTA_URLS {
+        match post_json(url, token, body.clone()) {
+            Ok(value) => {
+                answer = Some(value);
+                break;
+            }
+            Err(401) | Err(403) => return None,
+            Err(_) => continue,
+        }
+    }
+    windows_from_models(answer?.get("models"))
+}
+
+fn windows_from_models(models: Option<&Value>) -> Option<Usage> {
+    let models = models?.as_object()?;
+    let mut readings: Vec<Window> = models
+        .values()
+        .filter_map(|model| model.get("quotaInfo"))
+        .filter_map(|quota| {
+            let remaining = quota.get("remainingFraction").and_then(Value::as_f64)?;
+            Some(Window {
+                utilization: (((1.0 - remaining) * 100.0) * 10.0).round() / 10.0,
+                resets_at: jsonio::str_of(quota, "resetTime"),
+            })
+        })
+        .collect();
+    if readings.is_empty() {
+        return None;
+    }
+    readings.sort_by(|left, right| {
+        left.utilization
+            .partial_cmp(&right.utilization)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    });
+    Some(Usage {
+        five_hour: readings.last().cloned(),
+        seven_day: readings.first().cloned(),
+    })
 }
 
 #[cfg(test)]

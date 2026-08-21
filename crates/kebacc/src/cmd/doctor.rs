@@ -222,9 +222,9 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
         } else {
             say(
                 &format!(
-                    "  {} leftover file(s) from an earlier version. Remove with: kebacc doctor -Provider {} -Clean",
+                    "  {} leftover file(s) from an earlier version. Remove with: kebacc doctor {} -Clean",
                     stale.len(),
-                    provider.id.as_str()
+                    crate::provider::Wanted::flag_of(provider.id)
                 ),
                 Color::Yellow,
             );
@@ -234,8 +234,8 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
     if plain > 0 && !opts.protect {
         say(
             &format!(
-                "  {plain} snapshot(s) in plain text. Fix with: kebacc doctor -Provider {} -Protect",
-                provider.id.as_str()
+                "  {plain} snapshot(s) in plain text. Fix with: kebacc doctor {} -Protect",
+                crate::provider::Wanted::flag_of(provider.id)
             ),
             Color::Yellow,
         );
@@ -321,7 +321,7 @@ fn check_settings(report: &mut Report) {
     let hooks = auto_hooks(&settings);
     match hooks.len() {
         0 => say(
-            "  auto does not run on its own. Arm it with: kebacc install -AutoSwitch all",
+            "  auto does not run on its own. Arm it with: kebacc install -AutoSwitch",
             Color::Dim,
         ),
         1 => report.good(&format!(
@@ -335,12 +335,11 @@ fn check_settings(report: &mut Report) {
 
     let midtask = midtask_hooks(&settings);
     match midtask.len() {
-        0 => report.warn(
-            "auto only runs between sessions. Re-arm it to also run mid-task: /kebacc-auto-claude",
-        ),
+        0 => report
+            .warn("auto only runs between sessions. Re-arm it to also run mid-task: /kebacc-auto"),
         1 => report.good("auto also runs mid-task, before each tool call"),
         count => report.warn(&format!(
-            "{count} mid-task hooks run auto. Re-arm it to leave one: /kebacc-auto-claude"
+            "{count} mid-task hooks run auto. Re-arm it to leave one: /kebacc-auto"
         )),
     }
 
@@ -404,8 +403,9 @@ fn program_stem(command: &str) -> Option<String> {
 }
 
 /// Whether this command line names our binary, including the name it had
-/// before the rename and the scripts that came before that. `kebacc-codex`
-/// is a different plugin and is not ours.
+/// before the rename, the scripts that came before that, and the leftover
+/// `kebacc-codex` / `kebacc-antigravity` binaries from when each pool had
+/// its own process.
 pub fn is_ours_binary(command: &str) -> bool {
     let lower = command.to_lowercase();
     if lower.contains("claude-c") {
@@ -413,7 +413,7 @@ pub fn is_ours_binary(command: &str) -> bool {
     }
     matches!(
         program_stem(command).as_deref(),
-        Some("kebacc") | Some("kebacc-switch")
+        Some("kebacc") | Some("kebacc-switch") | Some("kebacc-codex") | Some("kebacc-antigravity")
     )
 }
 
@@ -422,18 +422,45 @@ pub fn is_auto_command(command: &str) -> bool {
     is_ours_binary(command) && lower.split_whitespace().any(|word| word == "auto")
 }
 
+pub fn hook_wanted(command: &str) -> crate::provider::Wanted {
+    use crate::provider::{parse_pool_name, ProviderId, Wanted};
+    let words = quoted_words(command);
+    let mut wanted = Wanted::unspecified();
+    let mut index = 0;
+    while index < words.len() {
+        let word = words[index].as_str();
+        let lower = word.to_ascii_lowercase();
+        if index == 0 || lower == "auto" {
+            index += 1;
+            continue;
+        }
+        if lower == "-provider" || lower == "--provider" {
+            if let Some(next) = words.get(index + 1) {
+                if let Some(name) = parse_pool_name(next) {
+                    wanted.apply_name(name);
+                }
+                index += 2;
+                continue;
+            }
+        }
+        if let Some(name) = parse_pool_name(word) {
+            wanted.apply_name(name);
+        }
+        index += 1;
+    }
+    if wanted.is_unspecified() {
+        match program_stem(command).as_deref() {
+            Some("kebacc-codex") => Wanted::one(ProviderId::Codex),
+            Some("kebacc-antigravity") => Wanted::one(ProviderId::Antigravity),
+            _ => Wanted::all(),
+        }
+    } else {
+        wanted
+    }
+}
+
 pub fn hook_scope(command: &str) -> Option<String> {
-    let words: Vec<&str> = command.split_whitespace().collect();
-    let at = words.iter().position(|w| {
-        w.eq_ignore_ascii_case("-provider") || w.eq_ignore_ascii_case("--provider")
-    })?;
-    words
-        .get(at + 1)
-        .map(|w| {
-            w.trim_matches(|c: char| !c.is_ascii_alphanumeric())
-                .to_lowercase()
-        })
-        .filter(|w| !w.is_empty())
+    Some(hook_wanted(command).display())
 }
 
 fn missing_path(command: &str) -> Option<String> {
@@ -550,15 +577,44 @@ mod tests {
     }
 
     #[test]
-    fn kebacc_codex_is_not_this_binary() {
+    fn hook_scope_reads_short_flags_and_old_provider_lines() {
+        use super::hook_scope;
+        assert_eq!(
+            hook_scope("\"/tmp/kebacc\" auto -ag -Hook").as_deref(),
+            Some("ag")
+        );
+        assert_eq!(
+            hook_scope("\"/tmp/kebacc\" auto -claude -ag -Hook").as_deref(),
+            Some("claude+ag")
+        );
+        assert_eq!(
+            hook_scope("\"/tmp/kebacc\" auto -Hook").as_deref(),
+            Some("all")
+        );
+        assert_eq!(
+            hook_scope("\"/tmp/kebacc\" auto -Provider antigravity -Hook").as_deref(),
+            Some("ag")
+        );
+        assert_eq!(
+            hook_scope("\"/tmp/kebacc-codex\" auto -Hook").as_deref(),
+            Some("codex")
+        );
+    }
+
+    #[test]
+    fn leftover_pool_binaries_are_still_ours() {
         assert!(is_ours_binary(
             "\"/tmp/kebacc\" auto -Provider claude -Hook"
         ));
         assert!(is_ours_binary(
             "\"C:/Users/me/.claude-tools/kebacc-switch.exe\" auto -Provider claude -Hook"
         ));
-        assert!(!is_ours_binary(
+        assert!(is_ours_binary(
             "\"/tmp/kebacc-codex\" auto -Provider codex -Hook"
         ));
+        assert!(is_ours_binary(
+            "\"/tmp/kebacc-antigravity\" auto -Provider antigravity -Hook"
+        ));
+        assert!(!is_ours_binary("starship prompt"));
     }
 }

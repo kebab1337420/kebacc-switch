@@ -10,7 +10,7 @@ use std::time::{SystemTime, UNIX_EPOCH};
 /// away from it the check reads the cache and never leaves the machine.
 const DEFAULT_INTERVAL_MS: u128 = 20 * 1000;
 
-pub fn run(provider: &str) -> i32 {
+pub fn run(wanted: &crate::provider::Wanted) -> i32 {
     // Word of the last detached switch, if one happened since we last ran.
     // It goes out whatever else this call decides to do: the session has been
     // spending a turn on an account that moved under it, and that is worth
@@ -18,7 +18,7 @@ pub fn run(provider: &str) -> i32 {
     announce(super::auto::take_note());
     // A tool call proves the session is alive, and is the cheapest place to
     // notice the watcher died.
-    super::watch::ensure_running(provider);
+    super::watch::ensure_running(wanted);
     if about_us(&hook_payload()) {
         return 0;
     }
@@ -31,7 +31,7 @@ pub fn run(provider: &str) -> i32 {
         true
     });
     if claimed == Ok(true) {
-        spawn(provider);
+        spawn(wanted);
     }
     0
 }
@@ -94,7 +94,10 @@ fn is_switcher(command: &str) -> bool {
         .unwrap_or(word)
         .to_lowercase();
     let program = program.strip_suffix(".exe").unwrap_or(&program);
-    matches!(program, "kebacc" | "kebacc-switch" | "kebacc-codex")
+    matches!(
+        program,
+        "kebacc" | "kebacc-switch" | "kebacc-codex" | "kebacc-antigravity"
+    )
 }
 
 fn stamp_file() -> PathBuf {
@@ -127,13 +130,15 @@ fn due(stamp: &PathBuf) -> bool {
     last > now || now - last >= interval_ms()
 }
 
-fn spawn(provider: &str) {
+fn spawn(wanted: &crate::provider::Wanted) {
     let Ok(exe) = std::env::current_exe() else {
         return;
     };
     let mut command = Command::new(exe);
+    command.arg("auto");
+    command.args(wanted.flags());
+    command.args(["-Hook", "-Spawned"]);
     command
-        .args(["auto", "-Provider", provider, "-Hook", "-Spawned"])
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -148,7 +153,7 @@ mod tests {
     #[test]
     fn a_switcher_command_is_left_alone() {
         assert!(about_us(
-            r#"{"tool_name":"Bash","tool_input":{"command":"~/.claude-tools/kebacc list -Provider all"}}"#
+            r#"{"tool_name":"Bash","tool_input":{"command":"~/.claude-tools/kebacc list -ag"}}"#
         ));
     }
 
@@ -173,6 +178,19 @@ mod tests {
     fn the_windows_binary_counts_too() {
         assert!(about_us(
             r#"{"tool_name":"Bash","tool_input":{"command":"\"C:\\Users\\x\\.claude-tools\\kebacc.exe\" doctor"}}"#
+        ));
+    }
+
+    #[test]
+    fn the_other_halves_count_too() {
+        assert!(about_us(
+            r#"{"tool_name":"Bash","tool_input":{"command":"~/.claude-tools/kebacc-codex list"}}"#
+        ));
+        assert!(about_us(
+            r#"{"tool_name":"Bash","tool_input":{"command":"~/.claude-tools/kebacc-antigravity list"}}"#
+        ));
+        assert!(about_us(
+            r#"{"tool_name":"Bash","tool_input":{"command":"~/.claude-tools/kebacc-switch list"}}"#
         ));
     }
 

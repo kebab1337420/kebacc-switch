@@ -1,5 +1,5 @@
 use crate::jsonio;
-use crate::provider;
+use crate::provider::{self, Wanted};
 use crate::term::{say, Color};
 use serde_json::{json, Value};
 use std::path::PathBuf;
@@ -19,12 +19,9 @@ pub enum Mode {
     /// Write the pool asked for, whatever was armed before.
     Set,
     /// Add this pool to what is armed, leaving the rest of the scope alone.
-    /// Only hooks running this binary are ever read or rewritten, so a switcher
-    /// installed beside this one keeps its own pair whatever this does.
     Merge,
-    /// Take this pool out. This build carries one pool, so what is left is
-    /// nothing it could be armed on: the hooks go. The other half's hooks run
-    /// its own binary under its own name and were never touched.
+    /// Take this pool out. What is left stays armed. If nothing remains, the
+    /// hooks go.
     Drop,
 }
 
@@ -34,34 +31,36 @@ pub enum Mode {
 /// Two hooks go in, not one. `SessionStart` opens the next session on an
 /// account with room; `PreToolUse` keeps that true *during* a run, so a quota
 /// that dies mid-task is noticed then instead of at the next launch.
-pub fn run(scope: &str, quiet: bool, mode: Mode) -> i32 {
-    let scope = scope.trim().to_lowercase();
-    let wanted = match scope.as_str() {
-        "off" | "none" | "no" => None,
-        "claude" | "all" => Some("claude".to_string()),
-        other => {
-            say(
-                &format!("'{other}' is not a pool. Use claude or off."),
-                Color::Red,
-            );
-            return 64;
-        }
-    };
-
-    if wanted.is_none() && mode != Mode::Set {
+pub fn run(wanted: &Wanted, quiet: bool, mode: Mode) -> i32 {
+    if wanted.is_off() && mode != Mode::Set {
         say(
             "-Merge and -Drop need a pool to add or take out, not 'off'.",
             Color::Red,
         );
         return 64;
     }
+    if matches!(mode, Mode::Merge | Mode::Drop) && wanted.is_unspecified() {
+        say(
+            "-Merge and -Drop need a pool: -claude, -codex or -ag.",
+            Color::Red,
+        );
+        return 64;
+    }
+
+    let asked = if wanted.is_off() {
+        None
+    } else if wanted.is_unspecified() {
+        Some(Wanted::all())
+    } else {
+        Some(wanted.clone())
+    };
 
     let dir = provider::claude_config_dir();
     let mut touched = false;
     // What was actually written, which under -Merge can be wider than what was
     // asked for and under -Drop is nothing at all. Reported instead of the
     // request.
-    let mut written = wanted.clone();
+    let mut written = asked.clone();
 
     for name in SETTINGS {
         let path = dir.join(name);
@@ -70,23 +69,20 @@ pub fn run(scope: &str, quiet: bool, mode: Mode) -> i32 {
         };
         let before = settings.clone();
         let existing = strip(&mut settings);
-        if let (Some(asked), Some(command)) = (&wanted, existing.first()) {
+        if let (Some(asked), Some(command)) = (&asked, existing.first()) {
             // Keep the binary the hooks already pointed at, whatever it is.
-            let exe = exe_of(command);
+            let exe = canonical_exe(&exe_of(command));
+            let had = crate::cmd::doctor::hook_wanted(command);
             let scope = match mode {
-                Mode::Set => Some(asked.clone()),
-                Mode::Merge => Some(widen(
-                    crate::cmd::doctor::hook_scope(command).as_deref(),
-                    asked,
-                )),
-                Mode::Drop => None,
+                Mode::Set => asked.clone(),
+                Mode::Merge => had.union(asked),
+                Mode::Drop => had.minus(asked),
             };
-            match scope {
-                Some(scope) => {
-                    arm_both(&mut settings, &exe, &scope);
-                    written = Some(scope);
-                }
-                None => written = None,
+            if scope.is_off() {
+                written = None;
+            } else {
+                arm_both(&mut settings, &exe, &scope);
+                written = Some(scope);
             }
             touched = true;
         }
@@ -103,7 +99,7 @@ pub fn run(scope: &str, quiet: bool, mode: Mode) -> i32 {
 
     // Nothing was armed anywhere, so there is nothing to widen: Set and Merge
     // write the first pair of hooks, Drop has nothing to take out.
-    if let Some(scope) = &wanted {
+    if let Some(scope) = &asked {
         if !touched && mode != Mode::Drop {
             let path = dir.join(SETTINGS[0]);
             let mut settings = jsonio::read(&path).unwrap_or_else(|| json!({}));
@@ -123,36 +119,34 @@ pub fn run(scope: &str, quiet: bool, mode: Mode) -> i32 {
 
     if !quiet {
         match &written {
-            Some(scope) => println!("auto {scope}"),
-            None => println!("auto off"),
+            Some(scope) if !scope.is_off() => println!("auto {}", scope.display()),
+            _ => println!("auto off"),
         }
     }
     0
 }
 
-/// The scope one hook has to carry to cover both what is armed and what is being
-/// added. This build only ever finds its own hooks, so in practice that is
-/// `claude`; `all` is still understood, and so is the other half's name, because
-/// a hook written back when one binary carried both pools says one of those and
-/// has to keep meaning "this pool too" rather than being replaced outright.
-fn widen(existing: Option<&str>, adding: &str) -> String {
-    let Some(had) = existing.map(|s| s.trim().to_lowercase()) else {
-        return adding.to_string();
-    };
-    if had.is_empty() || had == adding {
-        return adding.to_string();
-    }
-    match (had.as_str(), adding) {
-        ("claude" | "codex" | "all", "claude" | "all") => "all".to_string(),
-        // A scope this build has never heard of is not something to widen, so
-        // the pool asked for takes its place.
-        _ => adding.to_string(),
+/// Rewrite leftover `-Provider` hooks and leftover pool-binary paths.
+/// Cheap enough to run at every start: one JSON read, a write only if something
+/// actually changed.
+pub fn migrate() {
+    let dir = provider::claude_config_dir();
+    for name in SETTINGS {
+        let path = dir.join(name);
+        let Some(mut settings) = jsonio::read(&path) else {
+            continue;
+        };
+        let before = settings.clone();
+        rewrite_hooks(&mut settings);
+        if settings != before {
+            let _ = jsonio::write(&path, &settings);
+        }
     }
 }
 
 /// Writes the pair: the session-start hook and the mid-task one, same binary,
 /// same pool.
-fn arm_both(settings: &mut Value, exe: &str, scope: &str) {
+fn arm_both(settings: &mut Value, exe: &str, scope: &Wanted) {
     add(
         settings,
         SESSION_START,
@@ -167,6 +161,45 @@ fn arm_both(settings: &mut Value, exe: &str, scope: &str) {
         &line(exe, scope, true),
         MIDTASK_TIMEOUT,
     );
+}
+
+fn rewrite_hooks(settings: &mut Value) {
+    for event in [SESSION_START, PRE_TOOL_USE] {
+        let Some(groups) = settings
+            .get_mut("hooks")
+            .and_then(|hooks| hooks.get_mut(event))
+            .and_then(Value::as_array_mut)
+        else {
+            continue;
+        };
+        for group in groups {
+            let Some(list) = group.get_mut("hooks").and_then(Value::as_array_mut) else {
+                continue;
+            };
+            for hook in list {
+                let Some(command) = hook.get("command").and_then(Value::as_str) else {
+                    continue;
+                };
+                if !crate::cmd::doctor::is_auto_command(command) {
+                    continue;
+                }
+                let Some(next) = migrated_line(command) else {
+                    continue;
+                };
+                jsonio::map_mut(hook).insert("command".into(), json!(next));
+            }
+        }
+    }
+}
+
+fn migrated_line(command: &str) -> Option<String> {
+    let wanted = crate::cmd::doctor::hook_wanted(command);
+    let exe = canonical_exe(&exe_of(command));
+    let midtask = command.split_whitespace().any(|word| {
+        word.eq_ignore_ascii_case("-midtask") || word.eq_ignore_ascii_case("--midtask")
+    });
+    let next = line(&exe, &wanted, midtask);
+    (next != command).then_some(next)
 }
 
 /// Takes every auto hook out of the settings, session-start and mid-task both,
@@ -248,9 +281,34 @@ fn exe_of(command: &str) -> String {
         .unwrap_or_else(|| installed().to_string_lossy().to_string())
 }
 
-fn line(exe: &str, scope: &str, midtask: bool) -> String {
+fn line(exe: &str, scope: &Wanted, midtask: bool) -> String {
     let tail = if midtask { " -Midtask" } else { "" };
-    format!("{} auto -Provider {scope} -Hook{tail}", quoted(exe))
+    format!("{} auto{} -Hook{tail}", quoted(exe), scope.flag_clause())
+}
+
+fn canonical_exe(exe: &str) -> String {
+    let text = exe.trim_matches('"').replace('\\', "/");
+    let stem = text.rsplit('/').next().unwrap_or(&text);
+    let stem = stem
+        .strip_suffix(".exe")
+        .or_else(|| stem.strip_suffix(".EXE"))
+        .unwrap_or(stem)
+        .to_ascii_lowercase();
+    if matches!(
+        stem.as_str(),
+        "kebacc-codex" | "kebacc-antigravity" | "kebacc-switch"
+    ) {
+        let name = if cfg!(windows) {
+            "kebacc.exe"
+        } else {
+            "kebacc"
+        };
+        if let Some(slash) = text.rfind('/') {
+            return format!("{}{name}", &text[..=slash]);
+        }
+        return name.into();
+    }
+    text
 }
 
 /// The binary the hooks should name when there is none already there to copy.
@@ -286,7 +344,10 @@ fn quoted(path: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{add, exe_of, line, strip, widen, PRE_TOOL_USE, SESSION_START};
+    use super::{
+        add, canonical_exe, exe_of, line, migrated_line, strip, PRE_TOOL_USE, SESSION_START,
+    };
+    use crate::provider::{ProviderId, Wanted};
     use serde_json::json;
 
     fn armed(command: &str) -> serde_json::Value {
@@ -352,14 +413,14 @@ mod tests {
 
     #[test]
     fn arming_again_only_changes_the_pool_not_the_path() {
-        let command = "\"C:/Program Files/tools/kebacc.exe\" auto -Provider all -Hook";
+        let command = "\"C:/Program Files/tools/kebacc.exe\" auto -Hook";
         let mut settings = armed(command);
         let removed = strip(&mut settings);
         let exe = exe_of(&removed[0]);
-        let next = line(&exe, "claude", false);
+        let next = line(&exe, &Wanted::one(ProviderId::Claude), false);
         assert_eq!(
             next,
-            "\"C:/Program Files/tools/kebacc.exe\" auto -Provider claude -Hook"
+            "\"C:/Program Files/tools/kebacc.exe\" auto -claude -Hook"
         );
         add(&mut settings, SESSION_START, None, &next, 25);
         assert_eq!(
@@ -370,8 +431,8 @@ mod tests {
 
     #[test]
     fn the_mid_task_line_carries_the_flag_and_the_matcher() {
-        let command = line("kebacc", "claude", true);
-        assert_eq!(command, "\"kebacc\" auto -Provider claude -Hook -Midtask");
+        let command = line("kebacc", &Wanted::one(ProviderId::Claude), true);
+        assert_eq!(command, "\"kebacc\" auto -claude -Hook -Midtask");
         let mut settings = json!({});
         add(&mut settings, PRE_TOOL_USE, Some("*"), &command, 10);
         assert_eq!(settings["hooks"]["PreToolUse"][0]["matcher"], "*");
@@ -388,35 +449,55 @@ mod tests {
         // from this machine's own path or read back off a hook written before
         // this was true.
         let raw = "C:\\Users\\me\\.claude-tools\\kebacc.exe";
+        let claude = Wanted::one(ProviderId::Claude);
         assert_eq!(
-            line(raw, "claude", false),
-            "\"C:/Users/me/.claude-tools/kebacc.exe\" auto -Provider claude -Hook"
+            line(raw, &claude, false),
+            "\"C:/Users/me/.claude-tools/kebacc.exe\" auto -claude -Hook"
         );
         let old = format!("{raw} auto -Provider claude -Hook");
         assert_eq!(
-            line(&exe_of(&old), "claude", false),
-            "\"C:/Users/me/.claude-tools/kebacc.exe\" auto -Provider claude -Hook"
+            line(&exe_of(&old), &claude, false),
+            "\"C:/Users/me/.claude-tools/kebacc.exe\" auto -claude -Hook"
         );
     }
 
     #[test]
-    fn merging_keeps_a_scope_that_covers_the_other_half_too() {
-        // Written back when one binary carried both pools. Arming this one
-        // again must not narrow it to this pool alone.
-        assert_eq!(widen(Some("codex"), "claude"), "all");
-        assert_eq!(widen(Some("all"), "claude"), "all");
+    fn merging_two_pools_keeps_both() {
+        let merged = Wanted::one(ProviderId::Codex).union(&Wanted::one(ProviderId::Claude));
+        assert_eq!(merged.display(), "claude+codex");
+        assert_eq!(
+            Wanted::all()
+                .union(&Wanted::one(ProviderId::Claude))
+                .display(),
+            "all"
+        );
     }
 
     #[test]
-    fn merging_into_nothing_is_just_this_pool() {
-        assert_eq!(widen(None, "claude"), "claude");
-        assert_eq!(widen(Some(""), "claude"), "claude");
-        assert_eq!(widen(Some("claude"), "claude"), "claude");
+    fn dropping_one_pool_leaves_the_rest() {
+        let left = Wanted::all().minus(&Wanted::one(ProviderId::Antigravity));
+        assert_eq!(left.display(), "claude+codex");
+        assert!(Wanted::one(ProviderId::Claude)
+            .minus(&Wanted::one(ProviderId::Claude))
+            .is_off());
     }
 
     #[test]
-    fn a_scope_nobody_knows_is_replaced_not_widened() {
-        assert_eq!(widen(Some("sonnet"), "claude"), "claude");
+    fn an_old_provider_hook_is_rewritten() {
+        let next = migrated_line("\"/tmp/kebacc\" auto -Provider antigravity -Hook").unwrap();
+        assert_eq!(next, "\"/tmp/kebacc\" auto -ag -Hook");
+        let leftover =
+            migrated_line("\"/tmp/kebacc-codex\" auto -Provider codex -Hook -Midtask").unwrap();
+        assert!(leftover.contains("auto -codex -Hook -Midtask"));
+        assert!(leftover.contains("/kebacc\"") || leftover.contains("/kebacc.exe\""));
+        assert!(!leftover.contains("kebacc-codex"));
+    }
+
+    #[test]
+    fn leftover_binaries_are_renamed_to_kebacc() {
+        let unix = canonical_exe("/tmp/kebacc-antigravity");
+        assert!(unix.ends_with("/kebacc") || unix.ends_with("/kebacc.exe"));
+        assert!(!unix.contains("antigravity"));
     }
 
     #[test]

@@ -19,10 +19,6 @@ const WATCHER_WAIT: Duration = Duration::from_secs(5);
 /// How long the copy left behind waits for the name of the binary to come free.
 const REAP_WAIT: Duration = Duration::from_secs(60);
 
-/// The marker kebacc-codex writes beside ours. While it is there, the shared
-/// settings this uninstaller would otherwise reset belong to it too.
-const CODEX_MARKER: &str = ".codex-version";
-
 pub fn run(opts: &Options) -> i32 {
     let tools = super::install::tools_dir(opts);
 
@@ -42,17 +38,9 @@ pub fn run(opts: &Options) -> i32 {
         // a hook left behind is worse than a stale setting: it fails at the
         // start of every session the user opens from here on.
         //
-        // -Drop rather than off: it takes this pool out and leaves anything
-        // else armed, where off disarms whatever it finds.
-        super::arm::run("claude", true, super::arm::Mode::Drop);
+        super::arm::run(&crate::provider::Wanted::off(), true, super::arm::Mode::Set);
         super::wire::run(Some(false), None, true);
-        // KEBACC_SWITCH_UPDATE is a setting about a binary that is about to be
-        // gone, and left there it would silence the next install. kebacc-codex
-        // reads the same name, so it stays while that half is installed:
-        // turning its updates back on is not this uninstaller's call.
-        if !tools.join(CODEX_MARKER).exists() {
-            super::wire::run(None, Some(true), true);
-        }
+        super::wire::run(None, Some(true), true);
     } else {
         say(
             "The Claude Code settings point at another install, so they were left alone.",
@@ -132,23 +120,30 @@ pub fn run(opts: &Options) -> i32 {
         profiles(&tools);
     }
 
-    let pool = crate::provider::spec(crate::provider::ProviderId::Claude).store;
     if opts.pool {
-        if pool.is_dir() {
-            let _ = std::fs::remove_dir_all(&pool);
-            say(
-                &format!("Deleted the pool {}", pool.display()),
-                Color::Yellow,
-            );
+        for id in crate::provider::ProviderId::ALL {
+            let pool = crate::provider::spec(id).store;
+            if pool.is_dir() {
+                let _ = std::fs::remove_dir_all(&pool);
+                say(
+                    &format!("Deleted the pool {}", pool.display()),
+                    Color::Yellow,
+                );
+            }
         }
-    } else if pool.is_dir() {
-        say(
-            &format!(
-                "The saved accounts are still in {}. Delete them with -Pool.",
-                pool.display()
-            ),
-            Color::Dim,
-        );
+    } else {
+        for id in crate::provider::ProviderId::ALL {
+            let pool = crate::provider::spec(id).store;
+            if pool.is_dir() {
+                say(
+                    &format!(
+                        "The saved accounts are still in {}. Delete them with -Pool.",
+                        pool.display()
+                    ),
+                    Color::Dim,
+                );
+            }
+        }
     }
 
     say("", Color::Plain);
@@ -159,7 +154,7 @@ pub fn run(opts: &Options) -> i32 {
         );
     } else {
         say(
-            "The other install still owns the settings and the slash commands.",
+            "Another copy of the switcher still owns the settings and the slash commands.",
             Color::Dim,
         );
     }

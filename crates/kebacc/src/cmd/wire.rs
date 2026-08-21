@@ -215,21 +215,21 @@ mod tests {
 
     #[test]
     fn the_status_line_we_displace_is_handed_back_to_be_kept() {
-        let mut settings = json!({ "statusLine": { "command": "kebacc-codex statusline" } });
+        let mut settings = json!({ "statusLine": { "command": "starship prompt" } });
         let stash = set_statusline(&mut settings, true, OURS, None);
         let Stash::Keep(line) = stash else {
             panic!("the displaced status line was not kept");
         };
-        assert_eq!(line["command"], "kebacc-codex statusline");
+        assert_eq!(line["command"], "starship prompt");
     }
 
     #[test]
     fn taking_ours_out_puts_the_displaced_one_back() {
         let mut settings = json!({ "statusLine": { "command": OURS } });
-        let kept = json!({ "type": "command", "command": "kebacc-codex statusline" });
+        let kept = json!({ "type": "command", "command": "starship prompt" });
         let stash = set_statusline(&mut settings, false, "x", Some(kept));
         assert!(matches!(stash, Stash::Drop));
-        assert_eq!(settings["statusLine"]["command"], "kebacc-codex statusline");
+        assert_eq!(settings["statusLine"]["command"], "starship prompt");
     }
 
     #[test]
@@ -251,7 +251,7 @@ mod tests {
     #[test]
     fn a_line_taken_by_someone_else_is_not_overwritten_by_the_kept_one() {
         let mut settings = json!({ "statusLine": { "command": "starship prompt" } });
-        let kept = json!({ "command": "kebacc-codex statusline" });
+        let kept = json!({ "command": "starship prompt" });
         let stash = set_statusline(&mut settings, false, "x", Some(kept));
         assert!(matches!(stash, Stash::Nothing));
         assert_eq!(settings["statusLine"]["command"], "starship prompt");

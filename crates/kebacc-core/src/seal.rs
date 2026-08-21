@@ -1,8 +1,35 @@
 use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
+use std::sync::Mutex;
+use std::time::Duration;
 
 pub const PREFIX: &str = "ccx1:";
-const SECRET_ACCOUNT: &str = "kebacc-switch";
+
+static SECRET_ACCOUNT: Mutex<Option<&'static str>> = Mutex::new(None);
+
+/// The keychain / libsecret account the AES wrapping key is stored under.
+///
+/// An existing install can only open its saved logins if this is the same
+/// string that wrote them. Claude and Codex share `kebacc-switch`; Antigravity
+/// uses `kebacc-antigravity`. One process lists every pool, so this can move
+/// between commands.
+pub fn set_secret_account(name: &'static str) {
+    if let Ok(mut slot) = SECRET_ACCOUNT.lock() {
+        *slot = Some(name);
+    }
+}
+
+pub fn secret_account() -> Option<&'static str> {
+    SECRET_ACCOUNT.lock().ok().and_then(|slot| *slot)
+}
+
+/// Deadline for `security` and `secret-tool`. Either can wait forever for a
+/// prompt that nobody will answer: a Linux box over SSH with no D-Bus session,
+/// or a locked keyring. This path runs from a session-start hook and a status
+/// line that redraws several times a minute, so three seconds is long enough
+/// for a local lookup and short enough that a hung probe does not freeze the
+/// terminal.
+const KEYRING_PROBE_DEADLINE: Duration = Duration::from_secs(3);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Backend {
@@ -54,51 +81,56 @@ pub fn random_bytes(count: usize) -> Vec<u8> {
 
 fn secret_key(create: bool) -> Option<Vec<u8>> {
     let backend = backend();
-    let (tool, read, write): (&str, Vec<&str>, Vec<&str>) = match backend {
-        Backend::Keychain => (
-            "security",
-            vec![
-                "find-generic-password",
-                "-s",
-                SECRET_ACCOUNT,
-                "-a",
-                SECRET_ACCOUNT,
-                "-w",
-            ],
-            vec![
-                "add-generic-password",
-                "-U",
-                "-s",
-                SECRET_ACCOUNT,
-                "-a",
-                SECRET_ACCOUNT,
-                "-w",
-            ],
-        ),
-        Backend::Libsecret => (
-            "secret-tool",
-            vec![
-                "lookup",
-                "service",
-                SECRET_ACCOUNT,
-                "account",
-                SECRET_ACCOUNT,
-            ],
-            vec![
-                "store",
-                "--label=kebacc-switch",
-                "service",
-                SECRET_ACCOUNT,
-                "account",
-                SECRET_ACCOUNT,
-            ],
-        ),
-        _ => return None,
+    let (tool, read, write): (&str, Vec<String>, Vec<String>) = match backend {
+        Backend::Keychain => {
+            let account = secret_account()?;
+            (
+                "security",
+                vec![
+                    "find-generic-password".into(),
+                    "-s".into(),
+                    account.into(),
+                    "-a".into(),
+                    account.into(),
+                    "-w".into(),
+                ],
+                vec![
+                    "add-generic-password".into(),
+                    "-U".into(),
+                    "-s".into(),
+                    account.into(),
+                    "-a".into(),
+                    account.into(),
+                    "-w".into(),
+                ],
+            )
+        }
+        Backend::Libsecret => {
+            let account = secret_account()?;
+            (
+                "secret-tool",
+                vec![
+                    "lookup".into(),
+                    "service".into(),
+                    account.into(),
+                    "account".into(),
+                    account.into(),
+                ],
+                vec![
+                    "store".into(),
+                    format!("--label={account}"),
+                    "service".into(),
+                    account.into(),
+                    "account".into(),
+                    account.into(),
+                ],
+            )
+        }
+        Backend::Dpapi | Backend::None => return None,
     };
 
-    let mut reader = std::process::Command::new(tool);
-    if let Ok(out) = crate::proc::hidden(&mut reader).args(&read).output() {
-        let text = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if let Some(out) = timed_stdout(tool, &read) {
+        let text = String::from_utf8_lossy(&out).trim().to_string();
         if !text.is_empty() {
             if let Ok(key) = B64.decode(text.as_bytes()) {
                 return Some(key);
@@ -129,11 +161,13 @@ fn secret_key(create: bool) -> Option<Vec<u8>> {
     }
 }
 
+/// Write a secret to a helper that reads it from stdin (`security`, `secret-tool`).
 pub fn secret_via_stdin(tool: &str, args: &[&str], text: &str) -> bool {
-    write_stdin(tool, args, text)
+    let owned: Vec<String> = args.iter().map(|arg| (*arg).to_string()).collect();
+    write_stdin(tool, &owned, text)
 }
 
-fn write_stdin(tool: &str, args: &[&str], text: &str) -> bool {
+fn write_stdin(tool: &str, args: &[String], text: &str) -> bool {
     use std::io::Write;
     let mut writer = std::process::Command::new(tool);
     let child = crate::proc::hidden(&mut writer)
@@ -147,7 +181,54 @@ fn write_stdin(tool: &str, args: &[&str], text: &str) -> bool {
         let _ = stdin.write_all(text.as_bytes());
     }
     child.stdin.take();
-    child.wait().map(|s| s.success()).unwrap_or(false)
+    wait_with_deadline(&mut child)
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
+/// Piped stdout, then read after wait. `.output()` cannot be timed out. The
+/// payload is a 32-byte key in base64, so the pipe cannot fill before the
+/// child exits.
+fn timed_stdout(tool: &str, args: &[String]) -> Option<Vec<u8>> {
+    use std::io::Read;
+
+    let mut reader = std::process::Command::new(tool);
+    let mut child = crate::proc::hidden(&mut reader)
+        .args(args)
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .ok()?;
+    wait_with_deadline(&mut child)?;
+    let mut buf = Vec::new();
+    if let Some(mut pipe) = child.stdout.take() {
+        let _ = pipe.read_to_end(&mut buf);
+    }
+    Some(buf)
+}
+
+fn wait_with_deadline(child: &mut std::process::Child) -> Option<std::process::ExitStatus> {
+    use std::time::Instant;
+
+    let deadline = Instant::now() + KEYRING_PROBE_DEADLINE;
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Some(status),
+            Ok(None) => {
+                if Instant::now() >= deadline {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return None;
+                }
+                std::thread::sleep(Duration::from_millis(50));
+            }
+            Err(_) => {
+                let _ = child.kill();
+                let _ = child.wait();
+                return None;
+            }
+        }
+    }
 }
 
 pub fn wrap_bytes(plain: &[u8]) -> Option<Vec<u8>> {
@@ -313,4 +394,17 @@ fn dpapi_protect(_plain: &[u8]) -> Option<Vec<u8>> {
 #[cfg(not(windows))]
 fn dpapi_unprotect(_blob: &[u8]) -> Option<Vec<u8>> {
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_account_can_be_switched_between_pools() {
+        set_secret_account("kebacc-switch");
+        assert_eq!(secret_account(), Some("kebacc-switch"));
+        set_secret_account("kebacc-antigravity");
+        assert_eq!(secret_account(), Some("kebacc-antigravity"));
+    }
 }

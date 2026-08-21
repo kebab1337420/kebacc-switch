@@ -1,7 +1,7 @@
 # Kebacc switch
 
-Several logins for Claude Code, saved on this machine, and one
-command to move between them when one runs out of quota.
+Several logins for Claude Code, Codex and Antigravity, saved on this
+machine, and one command to move between them when one runs out of quota.
 
 It is a Rust binary: the crate is `crates/kebacc` at the root of this
 repository, and the binary installs itself — `kebacc install` puts it,
@@ -34,13 +34,14 @@ own runtime first.
 - **update** — replaces the installed binary with the newest release.
   `-Check` only says whether one is out.
 
-Every command takes `-Provider claude`, which is also the default
-to run once per provider.
+`list`, `auto` and `doctor` with no flag mean every pool. `add`, `switch` and
+`remove` need one: `-claude`/`-cl`, `-codex`/`-cx`, `-antigravity`/`-ag`.
 
 ```
-kebacc list -Provider all
-kebacc auto -Provider claude
-kebacc switch -Provider claude -Email you@example.com
+kebacc list
+kebacc list -ag
+kebacc auto -claude
+kebacc switch -claude -Email you@example.com
 ```
 
 ## Staying up to date
@@ -78,21 +79,17 @@ session that is already running.
 
 ## Switching without being asked
 
-`kebacc arm -Provider claude|off` is what arms it after the
-fact — it writes that hook and nothing else, never touching the account in use.
-The slash commands `/kebacc-auto-claude` and `/kebacc-auto-toggle` are that
-command; switching the live login is `/kebacc-switch-claude`, and nothing
-else.
+`kebacc arm -ag` (or `-claude`, `-codex`, `-all`, `off`) is what arms it after
+the fact. It writes that hook and nothing else, never touching the account in
+use. The slash command `/kebacc-auto` is that command; switching the live login
+is `/kebacc-switch`.
 
-Two flags for a machine that carries the Codex half as well:
+Two flags for a machine that already has a pool armed:
 
 - `-Merge` adds this pool to whatever is already armed instead of replacing it,
-  so installing this plugin cannot narrow a hook somebody else widened. The
-  installers use it.
-- `-Drop` takes this pool out. This build carries one pool, so what is left is
-  nothing it could be armed on and the hooks go — the other half's hooks run its
-  own binary, under its own name, and are never read or written here. The
-  uninstallers use it.
+  so `kebacc arm -codex -Merge` cannot drop Claude.
+- `-Drop` takes this pool out. What is left stays armed. If nothing is left the
+  hooks go.
 
 `kebacc install -AutoSwitch` writes a pair of hooks into
 `~/.claude/settings.json`:
@@ -158,9 +155,10 @@ time, machine-wide, however many sessions are open.
 | `KEBACC_SWITCH_STATUSLINE_REFRESH=off` | never spawn the background refresh; the numbers then only move when you run a command |
 | `KEBACC_SWITCH_REFRESH_INTERVAL_MS` | how old the numbers may get before a draw refreshes them, in milliseconds (default 300000) |
 
-Inside Claude Code the same things are slash commands, all under one prefix:
-`/kebacc-add-claude`, `/kebacc-list-claude`, `/kebacc-auto-claude`, and so on. The
-root [`README.md`](../../README.md) lists every one of them.
+Inside Claude Code the same things are slash commands: `/kebacc-list`,
+`/kebacc-add`, `/kebacc-switch`, `/kebacc-remove`, `/kebacc-auto`,
+`/kebacc-doctor`, `/kebacc-update`. Pass `-ag` (or `-claude`, `-codex`) as the
+argument. The root [`README.md`](../../README.md) lists them.
 
 ## Where things are kept
 
@@ -168,6 +166,8 @@ root [`README.md`](../../README.md) lists every one of them.
 | --- | --- |
 | `~/.claude-tools/` | the binary, and `.version` |
 | `~/.kebacc-switch-accounts/` | saved Claude Code logins |
+| `~/.kebacc-switch-codex-accounts/` | saved Codex logins |
+| `~/.kebacc-switch-antigravity-accounts/` | saved Antigravity logins |
 | `~/.claude/commands/kebacc-*.md` | the slash commands |
 | `~/.kebacc-switch/` | stamps, locks and caches (`KEBACC_SWITCH_STATE_DIR` moves it) |
 | `~/.kebacc-switch/kebacc.log` | what every switch did, rotated at 512 KB (`KEBACC_SWITCH_LOG=off` stops it) |
@@ -219,7 +219,7 @@ When a renewal fails the pair goes over unchanged and the CLI gets its own go at
 it; the switch says so, and the reason is in `~/.kebacc-switch/kebacc.log`.
 `/kebacc-doctor` reports each saved login's token, and `kebacc doctor -Renew`
 renews the ones that have run out. A login whose refresh token is dead needs a
-`/login` and `/kebacc-add-claude` once, and stays alive after that.
+`/login` and `/kebacc-add -claude` once, and stays alive after that.
 
 ## How the saved logins are protected
 
@@ -253,14 +253,13 @@ Linux. Download the one for the machine and ask it to install itself.
 src/commands/*.md               the slash commands, carried by the binary
                                  as include_str!, one per entry in COMMANDS
 VERSION                         the number the install stamps into .version
-crates/kebacc/src/main.rs    the entry point, and `-Provider all`
+crates/kebacc/src/main.rs       the entry point, and `-ag` / `-claude` / `-codex`
 crates/kebacc/src/provider.rs   what each CLI keeps on disk
-crates/kebacc/src/pool.rs    the trust stamps
-crates/kebacc/src/seal.rs    DPAPI, Keychain, libsecret
-crates/kebacc/src/usage.rs   the quota windows and their cache
-crates/kebacc/src/live.rs    the credentials the CLI is holding
-crates/kebacc/src/cmd/       one file per command, status line included
-                                 — install, uninstall and install-codex too
+crates/kebacc/src/pool.rs       the trust stamps
+crates/kebacc-core/src/seal.rs  DPAPI, Keychain, libsecret
+crates/kebacc/src/usage.rs      the quota windows and their cache
+crates/kebacc/src/live.rs       the credentials the CLI is holding
+crates/kebacc/src/cmd/          one file per command, status line included
 ```
 
 The crate lives in the workspace at the repository root rather than under

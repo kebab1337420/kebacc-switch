@@ -1,57 +1,64 @@
 mod cmd;
 mod jsonio;
+mod keyring;
 mod live;
 mod lock;
 mod log;
 mod oauth;
 mod pool;
-mod proc;
+mod proc {
+    pub use kebacc_core::proc::*;
+}
 mod provider;
-mod seal;
-mod term;
+mod seal {
+    pub use kebacc_core::seal::*;
+}
+mod term {
+    pub use kebacc_core::term::*;
+}
 mod usage;
 
 use cmd::Options;
-use provider::ProviderId;
+use provider::{parse_pool_name, ProviderId};
 use term::{say, Color};
+
+fn bind_seal(id: ProviderId) {
+    kebacc_core::seal::set_secret_account(id.seal_account());
+}
 
 fn main() {
     cmd::update::sweep();
+    cmd::arm::migrate();
     let args: Vec<String> = std::env::args().skip(1).collect();
     std::process::exit(dispatch(&args));
 }
 
 fn usage_text() {
-    println!("kebacc <command> [options]");
+    println!("kebacc <command> [-claude|-cl] [-codex|-cx] [-antigravity|-ag] [-all]");
     println!();
+    println!("  list        saved logins and their quota  (-Refresh asks the API)");
     println!("  add         save the login the CLI is using right now");
-    println!(
-        "  list        the saved logins and what is known of their quota (-Refresh to ask the API)"
-    );
-    println!("  switch      change which saved login the CLI uses");
+    println!("  switch      put a saved login in front");
     println!("  remove      forget a saved login");
-    println!("  auto        switch only if the one in use is out of quota");
-    println!(
-        "  arm         arm or disarm the session-start auto-switch, without switching anything now"
-    );
-    println!("  doctor      check the install and the pool (-Protect, -Adopt, -Clean, -Renew to repair, -Rollback to undo a switch)");
+    println!("  auto        switch only if the one in use is capped");
+    println!("  arm         turn the auto-switch on or off, change nothing now");
+    println!("  doctor      check the install and the pools (-Protect, -Adopt, -Clean, -Renew to repair, -Rollback to undo a switch)");
     println!("  statusline  the Claude Code status line, from a payload on stdin");
     println!("  update      install the newest release (-Check to only say whether one is out)");
-    println!("  install     put this binary, the slash commands and the hooks in place (-StatusLine, -AutoSwitch, -ToolsDir, -NoProfileEdit)");
-    println!(
-        "  uninstall   take all of that back, leaving the saved logins (-Pool removes those too)"
-    );
-    println!("  install-codex   clone, build and install the Codex half from its own branch");
+    println!("  install     put the binary, slash commands and hooks in place");
+    println!("  uninstall   take that back; saved logins stay (-Pool removes those too)");
     println!();
-    println!("  list -Countdown   both quota windows of every saved account, with their resets (-Refresh reads them again first)");
-    println!("  auto -Midtask     auto from a tool-use hook, at most once an interval");
-    println!("  watch             keep checking on a clock of its own, for the stretches with no tool call (the hooks start this)");
-    println!("  refresh           read every saved account's quota again, silently (the status line spawns this)");
-    println!("  arm -Provider claude|off   arm the session-start auto-switch, or turn it off");
-    println!("  arm -Provider claude -Merge         add this pool to whatever is already armed, rather than replacing it");
-    println!(
-        "  arm -Provider claude -Drop          take this pool out, leaving anything else armed"
-    );
+    println!("  kebacc list -ag");
+    println!("  kebacc list -claude -ag");
+    println!("  kebacc add -ag");
+    println!("  kebacc switch -codex -Email you@example.com");
+    println!("  kebacc arm -ag");
+    println!("  kebacc arm off");
+    println!();
+    println!("  list, auto, doctor, arm: no flag means every pool");
+    println!("  add, switch, remove: name one pool");
+    println!("  arm -claude -Merge    add Claude to whatever is already armed");
+    println!("  arm -ag -Drop         take Antigravity out, leave the rest");
     println!();
     println!("  Updates install themselves once a day at session start. KEBACC_SWITCH_UPDATE=off stops that.");
 }
@@ -76,7 +83,6 @@ fn dispatch(args: &[String]) -> i32 {
         "save" => "add",
         "check" => "doctor",
         "upgrade" | "selfupdate" => "update",
-        "installcodex" | "codex" => "install-codex",
         other => other,
     };
     if !matches!(
@@ -96,7 +102,6 @@ fn dispatch(args: &[String]) -> i32 {
             | "watch"
             | "install"
             | "uninstall"
-            | "install-codex"
             | "reap"
     ) {
         say(&format!("Unknown command '{command}'."), Color::Red);
@@ -105,6 +110,7 @@ fn dispatch(args: &[String]) -> i32 {
     }
 
     if command == "statusline" {
+        bind_seal(ProviderId::Claude);
         return cmd::statusline::run();
     }
 
@@ -115,7 +121,7 @@ fn dispatch(args: &[String]) -> i32 {
         return cmd::statusline::gitstat(std::path::Path::new(root));
     }
 
-    let (wanted, mut options) = match parse(&args[1..]) {
+    let mut options = match parse(&args[1..]) {
         Ok(parsed) => parsed,
         Err(problem) => {
             say(&problem, Color::Red);
@@ -126,7 +132,6 @@ fn dispatch(args: &[String]) -> i32 {
     match command {
         "install" => return cmd::install::run(&options),
         "uninstall" => return cmd::uninstall::run(&options),
-        "install-codex" => return cmd::codex::run(&options),
         // Not in the help: it is the copy an uninstall leaves behind to take
         // the name of the binary once this process lets go of it.
         "reap" => return cmd::uninstall::reap(&options),
@@ -147,7 +152,7 @@ fn dispatch(args: &[String]) -> i32 {
             (false, true) => cmd::arm::Mode::Drop,
             (false, false) => cmd::arm::Mode::Set,
         };
-        return cmd::arm::run(&wanted, options.quiet, mode);
+        return cmd::arm::run(&options.wanted, options.quiet, mode);
     }
 
     if command == "refresh" {
@@ -162,30 +167,35 @@ fn dispatch(args: &[String]) -> i32 {
         cmd::update::maybe();
         // Session start is the other place a session announces itself, and the
         // one that gets the watcher up before the first tool call.
-        cmd::watch::ensure_running(&wanted);
+        cmd::watch::ensure_running(&options.wanted);
     }
 
     if command == "watch" {
-        return cmd::watch::run(&wanted);
+        return cmd::watch::run(&options.wanted);
     }
 
     if command == "auto" && options.midtask {
-        return cmd::midtask::run(&wanted);
+        return cmd::midtask::run(&options.wanted);
     }
 
-    // `all` is kept as a spelling of `claude`: the hooks written before Codex
-    // moved out to its own plugin still say `-Provider all`.
-    if provider::is_all(&wanted) {
-        return hushed(run(command, ProviderId::Claude, &options), &options);
+    if matches!(command, "add" | "switch" | "remove") {
+        let Some(id) = options.wanted.exactly_one() else {
+            say("Name a pool: -claude, -codex or -ag.", Color::Red);
+            return 64;
+        };
+        bind_seal(id);
+        return hushed(run(command, id, &options), &options);
     }
 
-    match provider::resolve(&wanted) {
-        Ok(id) => hushed(run(command, id, &options), &options),
-        Err(problem) => {
-            say(&problem, Color::Red);
-            64
+    let mut code = 0;
+    for id in options.wanted.ids() {
+        bind_seal(id);
+        let next = run(command, id, &options);
+        if code == 0 {
+            code = next;
         }
     }
+    hushed(code, &options)
 }
 
 fn hushed(code: i32, options: &Options) -> i32 {
@@ -210,26 +220,41 @@ fn run(command: &str, id: ProviderId, options: &Options) -> i32 {
     }
 }
 
-fn parse(tokens: &[String]) -> Result<(String, Options), String> {
-    let mut provider = "claude".to_string();
+fn parse(tokens: &[String]) -> Result<Options, String> {
     let mut options = Options::default();
     let mut index = 0;
 
     while index < tokens.len() {
         let token = &tokens[index];
         index += 1;
-        let Some(name) = token.strip_prefix('-') else {
-            return Err(format!(
-                "Unexpected argument '{token}'. Options are named: -Email you@example.com"
-            ));
-        };
+        if !token.starts_with('-') {
+            if token.contains('@') {
+                options.email = Some(token.clone());
+                continue;
+            }
+            match parse_pool_name(token) {
+                Some(name) => options.wanted.apply_name(name),
+                None => {
+                    return Err(format!(
+                        "Unexpected argument '{token}'. Pools are -claude, -codex, -ag."
+                    ))
+                }
+            }
+            continue;
+        }
         // `-ToolsDir` and `--tools-dir` are the same option: the two installers
         // this replaced took the Windows spelling and the POSIX one, and the
         // instructions people have already been given use both.
-        let name = name
+        let name = token
             .trim_start_matches('-')
             .replace(['-', '_'], "")
             .to_lowercase();
+        if let Some(pool) = parse_pool_name(&name) {
+            if !matches!(name.as_str(), "provider" | "p") {
+                options.wanted.apply_name(pool);
+                continue;
+            }
+        }
         let mut value = || {
             let next = tokens.get(index).filter(|t| !t.starts_with('-'));
             if next.is_some() {
@@ -238,7 +263,17 @@ fn parse(tokens: &[String]) -> Result<(String, Options), String> {
             next.cloned()
         };
         match name.as_str() {
-            "provider" | "p" => provider = value().ok_or("-Provider needs a name: claude.")?,
+            "provider" | "p" => {
+                let given = value().ok_or("Name a pool: -claude, -codex or -ag.")?;
+                match parse_pool_name(&given) {
+                    Some(pool) => options.wanted.apply_name(pool),
+                    None => {
+                        return Err(format!(
+                            "Unknown pool '{given}'. Use -claude, -codex, -ag or -all."
+                        ))
+                    }
+                }
+            }
             "email" | "e" => options.email = Some(value().ok_or("-Email needs an address.")?),
             "quiet" => options.quiet = true,
             "hook" => {
@@ -262,21 +297,13 @@ fn parse(tokens: &[String]) -> Result<(String, Options), String> {
             "nostatusline" => options.statusline = Some(false),
             "toolsdir" => options.tools_dir = Some(value().ok_or("-ToolsDir needs a directory.")?),
             "binary" => options.binary = Some(value().ok_or("-Binary needs a path.")?),
-            // `-AutoSwitch claude` is accepted so the words the old installers
-            // took still work; claude is the only pool this plugin has.
-            "autoswitch" => {
-                let _ = value();
-                options.auto_switch = true;
-            }
+            "autoswitch" => options.auto_switch = true,
             "noprofileedit" => options.no_profile_edit = true,
             "pool" => options.pool = true,
-            "source" => options.source = Some(value().ok_or("-Source needs a URL or a path.")?),
-            "branch" => options.branch = Some(value().ok_or("-Branch needs a name.")?),
-            "keepcheckout" => options.keep_checkout = true,
             "autoupdate" => options.updates = Some(true),
             "noautoupdate" => options.updates = Some(false),
             other => return Err(format!("Unknown option '-{other}'.")),
         }
     }
-    Ok((provider, options))
+    Ok(options)
 }

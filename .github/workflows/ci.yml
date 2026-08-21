@@ -2,8 +2,8 @@ name: ci
 
 # The project is written on Windows, so this is what says whether it still
 # builds anywhere else. Every push runs the tests on the three platforms it
-# claims to support, and installs the binary it just built on each of them:
-# the binary is its own installer, so that is the installer being tested.
+# claims to support, and installs the binaries it just built on each of them:
+# each binary is its own installer, so that is the installer being tested.
 on:
   push:
     branches: ["**"]
@@ -30,27 +30,22 @@ jobs:
       - uses: Swatinem/rust-cache@v2
 
       - name: Build
-        run: cargo build --release -p kebacc
+        run: cargo build --release --workspace
 
       - name: Test
-        run: cargo test --release -p kebacc
+        run: cargo test --release --workspace
 
-      # Three copies of this program live on three branches of this
-      # repository, and a fix written on one is read side by side with the
-      # others when it is carried over. Formatting left to drift turns every
-      # one of those comparisons into a diff of line breaks with the real
-      # change buried in it, so the format is settled here rather than by
-      # whoever edits a file next.
       - name: Formatting
         run: cargo fmt --all -- --check
 
       - name: Clippy
-        run: cargo clippy --release --all-targets -p kebacc -- -D warnings
+        run: cargo clippy --release --all-targets --workspace -- -D warnings
 
-      # A binary that will not start says so here rather than on a user's
-      # machine after the release is out.
-      - name: It runs
-        run: cargo run --release -p kebacc -- --version
+      - name: They run
+        shell: bash
+        run: |
+          set -eu
+          cargo run --release -p kebacc -- --version
 
       # The version a plugin stamps into its marker file, the version the binary
       # reports, and the version cargo built are three copies of one number. A
@@ -60,46 +55,41 @@ jobs:
         if: runner.os != 'Windows'
         run: |
           set -eu
-          crate=$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' crates/kebacc/Cargo.toml | head -n 1)
-          marked=$(tr -d ' \t\r\n' < plugins/kebacc/VERSION)
-          test "$marked" = "$crate" || {
-            echo "plugins/kebacc/VERSION is $marked, the crate is $crate" >&2
-            exit 1
+          check() {
+            crate=$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' "crates/$1/Cargo.toml" | head -n 1)
+            marked=$(tr -d ' \t\r\n' < "plugins/$2/VERSION")
+            test "$marked" = "$crate" || {
+              echo "plugins/$2/VERSION is $marked, the crate is $crate" >&2
+              exit 1
+            }
+            echo "$2 VERSION says $crate"
           }
-          echo "every VERSION says $crate"
+          check kebacc kebacc
 
       # The binary carries the slash commands inside it, one include_str! each,
       # so a command added to the directory and forgotten in COMMANDS ships as
       # a command nobody gets, and a name left in COMMANDS after its file is
-      # deleted fails the build. The sweep side of the same promise — that
-      # every shipped command is one the uninstall also takes back — is a unit
-      # test in install.rs.
+      # deleted fails the build.
       - name: Every command on disk is one the binary carries
         if: runner.os != 'Windows'
         run: |
           set -eu
           bad=0
-          # The include_str! paths, not every quoted name in the file: the
-          # tests name commands this plugin deliberately does not carry.
-          carried=$(grep -o 'commands/kebacc-[^"]*\.md' crates/kebacc/src/cmd/install.rs |
+          carried=$(grep -o "commands/kebacc-[^\"]*\\.md" "crates/kebacc/src/cmd/install.rs" |
             sed 's|.*/||' | sort -u)
           for file in plugins/kebacc/src/commands/*.md; do
             name=${file##*/}
             echo "$carried" | grep -qx "$name" ||
-              { echo "$name is on disk but not carried by the binary" >&2; bad=1; }
+              { echo "$name is on disk but not carried" >&2; bad=1; }
           done
           for name in $carried; do
             [ -f "plugins/kebacc/src/commands/$name" ] ||
-              { echo "$name is carried by the binary but not on disk" >&2; bad=1; }
+              { echo "$name is carried but not on disk" >&2; bad=1; }
           done
           test "$bad" = 0
-          echo "$(ls plugins/kebacc/src/commands/*.md | wc -l | tr -d ' ') commands, all carried"
+          echo "every plugin command is carried"
 
-      # There is no install script any more: `kebacc install` is the
-      # installer, and it carries the slash commands inside it. What used to be
-      # install.sh and install.ps1 is this one code path, run here for real on
-      # every platform, against directories made for the occasion.
-      - name: The binary installs and uninstalls itself
+      - name: The binaries install and uninstall themselves
         if: runner.os != 'Windows'
         run: |
           set -eu
@@ -107,49 +97,37 @@ jobs:
           export HOME="$sandbox/home"
           export CLAUDE_CONFIG_DIR="$sandbox/claude"
           export KEBACC_SWITCH_ACCOUNTS="$sandbox/accounts"
-          mkdir -p "$HOME" "$CLAUDE_CONFIG_DIR"
+          mkdir -p "$HOME" "$CLAUDE_CONFIG_DIR/commands"
           echo '{"model":"opus"}' > "$CLAUDE_CONFIG_DIR/settings.json"
 
-          # kebacc-antigravity installs into this same directory and ships all
-          # three. Neither the install nor the uninstall may take them.
-          mkdir -p "$CLAUDE_CONFIG_DIR/commands"
-          for name in kebacc-auto-all.md kebacc-list-all.md kebacc-list-antigravity.md; do
-            printf 'another half wrote this\n' > "$CLAUDE_CONFIG_DIR/commands/$name"
-          done
-
-          target/release/kebacc install --status-line --auto-switch claude
-
-          for name in kebacc-auto-all.md kebacc-list-all.md kebacc-list-antigravity.md; do
-            test -f "$CLAUDE_CONFIG_DIR/commands/$name" || {
-              echo "the install took $name, which belongs to another half" >&2
-              exit 1
-            }
-          done
+          target/release/kebacc install --status-line --auto-switch all
 
           test -x "$HOME/.claude-tools/kebacc"
           test "$(cat "$HOME/.claude-tools/.version")" = "$(cat plugins/kebacc/VERSION)"
-          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-claude.md"
+          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list.md"
+          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-add.md"
+          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-auto.md"
+          test ! -e "$CLAUDE_CONFIG_DIR/commands/kebacc-list-claude.md"
+          test ! -e "$CLAUDE_CONFIG_DIR/commands/kebacc-list-all.md"
           grep -q '"model": *"opus"' "$CLAUDE_CONFIG_DIR/settings.json"
           grep -q 'statusLine' "$CLAUDE_CONFIG_DIR/settings.json"
           grep -q 'SessionStart' "$CLAUDE_CONFIG_DIR/settings.json"
-          # Both halves, or the mid-task one goes back to being code nobody
-          # reaches: it shipped once already with no hook pointing at it.
           grep -q 'PreToolUse' "$CLAUDE_CONFIG_DIR/settings.json"
           grep -q -- '-Midtask' "$CLAUDE_CONFIG_DIR/settings.json"
+          grep -q -- 'auto' "$CLAUDE_CONFIG_DIR/settings.json"
+          ! grep -q -- '-Provider' "$CLAUDE_CONFIG_DIR/settings.json"
           cat "$HOME"/.zshrc "$HOME"/.bashrc "$HOME"/.profile 2>/dev/null |
             grep -q 'kebacc account switcher'
           "$HOME/.claude-tools/kebacc" doctor > /dev/null
 
-          # Names an older install still has on disk. Uninstall must take them
-          # even though this build no longer writes them.
           printf 'retired\n' > "$CLAUDE_CONFIG_DIR/commands/kebacc-install-codex.md"
+          printf 'leftover\n' > "$HOME/.claude-tools/kebacc-codex"
+          chmod +x "$HOME/.claude-tools/kebacc-codex"
 
-          # --yes: the uninstall asks before taking anything, and there is no
-          # terminal here to answer it from. It is run from the installed copy,
-          # which is how somebody actually reaches it.
           "$HOME/.claude-tools/kebacc" uninstall --yes
 
           test ! -e "$HOME/.claude-tools/kebacc"
+          test ! -e "$HOME/.claude-tools/kebacc-codex"
           for file in plugins/kebacc/src/commands/*.md; do
             test ! -e "$CLAUDE_CONFIG_DIR/commands/${file##*/}" || {
               echo "the uninstall left ${file##*/} behind" >&2
@@ -160,24 +138,15 @@ jobs:
             echo "the uninstall left retired kebacc-install-codex.md behind" >&2
             exit 1
           }
-          for name in kebacc-auto-all.md kebacc-list-all.md kebacc-list-antigravity.md; do
-            test -f "$CLAUDE_CONFIG_DIR/commands/$name" || {
-              echo "the uninstall took $name, which belongs to another half" >&2
-              exit 1
-            }
-          done
+          test ! -e "$CLAUDE_CONFIG_DIR/commands/kebacc-list.md"
+          test ! -e "$CLAUDE_CONFIG_DIR/commands/kebacc-auto.md"
           ! grep -q 'statusLine' "$CLAUDE_CONFIG_DIR/settings.json"
-          # Neither hook may outlive the binary they point at.
           ! grep -q 'SessionStart' "$CLAUDE_CONFIG_DIR/settings.json"
           ! grep -q 'PreToolUse' "$CLAUDE_CONFIG_DIR/settings.json"
           ! cat "$HOME"/.zshrc "$HOME"/.bashrc "$HOME"/.profile 2>/dev/null |
             grep -q 'kebacc account switcher'
-          echo 'installed and uninstalled cleanly'
+          echo 'kebacc installed and uninstalled cleanly'
 
-      # The same on Windows, where deleting a running binary is not allowed:
-      # the uninstall hands the last of it to a copy it leaves behind, and this
-      # is where that is checked on a machine that is not the one it was
-      # written on.
       - name: The binary installs and uninstalls itself
         if: runner.os == 'Windows'
         shell: pwsh
@@ -189,15 +158,12 @@ jobs:
           $env:KEBACC_SWITCH_ACCOUNTS = Join-Path $sandbox 'accounts'
           New-Item -ItemType Directory -Path $env:CLAUDE_CONFIG_DIR -Force | Out-Null
           $settingsPath = Join-Path $env:CLAUDE_CONFIG_DIR 'settings.json'
-          # A status line somebody else holds: ours displaces it on the way in
-          # and has to hand it back on the way out.
           '{"model":"opus","statusLine":{"type":"command","command":"starship prompt"}}' | Set-Content -LiteralPath $settingsPath
 
           target/release/kebacc.exe install -ToolsDir $tools -StatusLine -AutoSwitch claude -NoProfileEdit
           if ($LASTEXITCODE -ne 0) { throw "install exited $LASTEXITCODE" }
 
           $settings = Get-Content -LiteralPath $settingsPath -Raw
-          # Both halves, and the settings that were already there.
           foreach ($needle in 'statusLine', 'SessionStart', 'PreToolUse', '-Midtask', '"opus"') {
             if ($settings -notmatch [regex]::Escape($needle)) { throw "settings.json is missing $needle" }
           }
@@ -207,13 +173,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "uninstall exited $LASTEXITCODE" }
 
           $settings = Get-Content -LiteralPath $settingsPath -Raw
-          # Neither hook may outlive the binary they point at, and nothing of
-          # ours may be left in the status line either.
           foreach ($needle in 'kebacc.exe', 'SessionStart', 'PreToolUse') {
             if ($settings -match [regex]::Escape($needle)) { throw "the uninstall left $needle behind" }
           }
-          # The copy left behind waits for this process to let go of the name,
-          # so the binary goes a moment after the command that removed it.
           $deadline = (Get-Date).AddSeconds(30)
           while ((Test-Path -LiteralPath $exe) -and (Get-Date) -lt $deadline) { Start-Sleep -Milliseconds 250 }
           if (Test-Path -LiteralPath $exe) { throw 'the binary is still there' }
@@ -222,14 +184,32 @@ jobs:
           if ($line -ne 'starship prompt') { throw "the displaced status line did not come back: $line" }
           Write-Host 'installed and uninstalled cleanly, and starship has its status line back'
 
-      # The published binary is what most people will actually run, so the
-      # newest release is installed here the way they would install it: one
-      # file downloaded, asked to install itself.
+      - name: One install writes every pool's commands and sweeps leftover binaries
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $sandbox = Join-Path $env:RUNNER_TEMP ('onebin-' + [guid]::NewGuid().ToString('N'))
+          $tools = Join-Path $sandbox 'tools'
+          $env:CLAUDE_CONFIG_DIR = Join-Path $sandbox 'claude'
+          $env:KEBACC_SWITCH_ACCOUNTS = Join-Path $sandbox 'accounts'
+          New-Item -ItemType Directory -Path $env:CLAUDE_CONFIG_DIR, $tools -Force | Out-Null
+          '{}' | Set-Content -LiteralPath (Join-Path $env:CLAUDE_CONFIG_DIR 'settings.json')
+          Set-Content -LiteralPath (Join-Path $tools 'kebacc-codex.exe') -Value 'leftover'
+
+          target/release/kebacc.exe install -ToolsDir $tools -NoProfileEdit
+          if ($LASTEXITCODE -ne 0) { throw "kebacc install exited $LASTEXITCODE" }
+
+          if (Test-Path -LiteralPath (Join-Path $tools 'kebacc-codex.exe')) { throw 'leftover kebacc-codex.exe was not swept' }
+          $commands = Join-Path $env:CLAUDE_CONFIG_DIR 'commands'
+          foreach ($name in 'kebacc-list.md', 'kebacc-add.md', 'kebacc-auto.md') {
+            if (-not (Test-Path -LiteralPath (Join-Path $commands $name))) { throw "$name is missing" }
+          }
+          if (Test-Path -LiteralPath (Join-Path $commands 'kebacc-list-claude.md')) { throw 'retired kebacc-list-claude.md was not swept' }
+          Write-Host 'one install carries every pool'
+
       - name: The published release installs and runs
         if: runner.os != 'Windows'
-        # The anonymous rate limit is per address, and a runner shares its
-        # address with everything else on that machine, so an unauthenticated
-        # lookup here answers 403 often enough to fail a green build.
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -240,18 +220,12 @@ jobs:
           export KEBACC_SWITCH_ACCOUNTS="$sandbox/accounts"
           mkdir -p "$HOME" "$CLAUDE_CONFIG_DIR"
 
-          # The same names cmd/update.rs asks for, so this downloads the file a
-          # machine updating itself would have downloaded.
           case "$(uname -s)-$(uname -m)" in
             Darwin-arm64)  asset=kebacc-aarch64-apple-darwin ;;
             Darwin-x86_64) asset=kebacc-x86_64-apple-darwin ;;
             Linux-aarch64) asset=kebacc-aarch64-unknown-linux-gnu ;;
             *)             asset=kebacc-x86_64-unknown-linux-gnu ;;
           esac
-          # The newest kebacc-v tag, named outright: the same repository
-          # publishes the Codex half under kebacc-codex-v tags, and a download
-          # with no tag takes whichever of the two is the Latest release and
-          # then finds none of this half's assets on it.
           tag=$(gh release list --repo "$GITHUB_REPOSITORY" --limit 100 --json tagName --jq '[.[] | select(.tagName | startswith("kebacc-v"))] | first | .tagName // ""')
           if [ -z "$tag" ]; then
             echo "no kebacc-v release has been published yet, so there is nothing to install from a release"
@@ -260,11 +234,6 @@ jobs:
           gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern "$asset" --dir "$sandbox" --clobber
           chmod +x "$sandbox/$asset"
 
-          # The release that is out was published before the installer moved
-          # into the binary, so there is no `install` on it to run. That is a
-          # release yet to be cut rather than a broken build, and saying so
-          # beats a red build that nothing in the tree can turn green. The next
-          # release brings this gate back by itself.
           if ! "$sandbox/$asset" --help 2>&1 | grep -q '^  install '; then
             echo "the published release predates the built-in installer, so there is nothing to install yet"
             exit 0
@@ -275,14 +244,10 @@ jobs:
           test -x "$HOME/.claude-tools/kebacc"
           "$HOME/.claude-tools/kebacc" --version
           "$HOME/.claude-tools/kebacc" doctor > /dev/null
-          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list-claude.md"
+          test -f "$CLAUDE_CONFIG_DIR/commands/kebacc-list.md"
           "$HOME/.claude-tools/kebacc" uninstall --yes
           echo 'the published binary installs and runs'
 
-      # install.bat runs `install` on the file it downloads, so the release it
-      # would fetch has to be one that carries that command. The question is
-      # asked here, in a shell that can quote a path and read an exit code,
-      # rather than in the cmd script below.
       - name: Does the published release know how to install itself
         id: published
         if: runner.os == 'Windows'
@@ -291,8 +256,6 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $ErrorActionPreference = 'Stop'
-          # The runners are x64, which is the only asset this needs; install.bat
-          # picks the arm64 one on a machine that has it.
           $asset = 'kebacc-x86_64-pc-windows-msvc.exe'
           $dir = Join-Path $env:RUNNER_TEMP 'probe'
           $tag = gh release list --repo $env:GITHUB_REPOSITORY --limit 100 --json tagName --jq '[.[] | select(.tagName | startswith("kebacc-v"))] | first | .tagName // ""'
@@ -310,14 +273,11 @@ jobs:
             Write-Host 'the published release predates the built-in installer, so there is nothing to install yet'
           }
 
-      # The Windows half of the same thing, run through install.bat: that file
-      # is what a double-click reaches, and nothing else tests it.
       - name: install.bat installs the published release
         if: runner.os == 'Windows' && steps.published.outputs.installer == 'true'
         shell: cmd
         env:
           GITHUB_TOKEN: ${{ github.token }}
-          # Nobody is here to press a key at the end of it.
           KEBACC_NO_PAUSE: "1"
         run: |
           set "CLAUDE_CONFIG_DIR=%RUNNER_TEMP%\bat-claude"
@@ -327,6 +287,6 @@ jobs:
           call install.bat -ToolsDir "%TOOLS%" -NoProfileEdit || exit /b 1
           "%TOOLS%\kebacc.exe" --version || exit /b 1
           "%TOOLS%\kebacc.exe" doctor >nul || exit /b 1
-          if not exist "%CLAUDE_CONFIG_DIR%\commands\kebacc-list-claude.md" exit /b 1
+          if not exist "%CLAUDE_CONFIG_DIR%\commands\kebacc-list.md" exit /b 1
           "%TOOLS%\kebacc.exe" uninstall -ToolsDir "%TOOLS%" -NoProfileEdit -Yes || exit /b 1
           echo the published binary installs and runs

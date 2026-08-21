@@ -35,7 +35,7 @@ own runtime first.
   `-Check` only says whether one is out.
 
 `list`, `auto` and `doctor` with no flag mean every pool. `add`, `switch` and
-`remove` need one: `-claude`/`-cl`, `-codex`/`-cx`, `-antigravity`/`-ag`.
+`remove` need one: `-claude`/`-cc`, `-codex`/`-cx`, `-antigravity`/`-ag`.
 
 ```
 kebacc list

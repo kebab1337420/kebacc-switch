@@ -29,7 +29,7 @@ kebacc switch -codex
 kebacc add -ag
 ```
 
-Full name or short: `-claude`/`-cl`, `-codex`/`-cx`, `-antigravity`/`-ag`, `-all`.
+Full name or short: `-claude`/`-cc`, `-codex`/`-cx`, `-antigravity`/`-ag`, `-all`.
 `list`, `auto` and `doctor` with no flag mean every pool. `add`, `switch` and
 `remove` need one. Uninstall takes the binary and the slash commands. The saved
 logins stay until you pass `-Pool`. An install or update rewrites leftover
@@ -146,7 +146,7 @@ kebacc refresh -codex                   # re-read that pool, print nothing
 kebacc update
 ```
 
-`-claude`/`-cl`, `-codex`/`-cx`, `-antigravity`/`-ag`, `-all`. No flag on list,
+`-claude`/`-cc`, `-codex`/`-cx`, `-antigravity`/`-ag`, `-all`. No flag on list,
 auto, doctor, watch and refresh means every pool. add, switch and remove need
 one.
 

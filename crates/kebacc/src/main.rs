@@ -34,7 +34,7 @@ fn main() {
 }
 
 fn usage_text() {
-    println!("kebacc <command> [-claude|-cl] [-codex|-cx] [-antigravity|-ag] [-all]");
+    println!("kebacc <command> [-claude|-cc] [-codex|-cx] [-antigravity|-ag] [-all]");
     println!();
     println!("  list        saved logins and their quota  (-Refresh asks the API)");
     println!("  add         save the login the CLI is using right now");

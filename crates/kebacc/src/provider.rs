@@ -552,6 +552,10 @@ mod tests {
             Some(PoolName::One(ProviderId::Antigravity))
         ));
         assert!(matches!(
+            parse_pool_name("-cc"),
+            Some(PoolName::One(ProviderId::Claude))
+        ));
+        assert!(matches!(
             parse_pool_name("-cl"),
             Some(PoolName::One(ProviderId::Claude))
         ));

@@ -117,6 +117,8 @@ fn dispatch(args: &[String]) -> i32 {
 
     if command == "statusline" {
         bind_seal(ProviderId::Claude);
+        let claude = provider::spec(ProviderId::Claude);
+        usage::use_pool_caps(pool::Pool::new(&claude).caps());
         return cmd::statusline::run();
     }
 

@@ -128,7 +128,7 @@ impl<'a> Pool<'a> {
                     identity: identity_of(&snapshot),
                     cache: jsonio::obj(&snapshot, "usageCache"),
                     protected: snapshot.get("credentialsProtected").is_some(),
-                    trust: self.verify(key.as_deref(), &name, &snapshot),
+                    trust: self.verify(key.as_deref(), manifest.as_ref(), &name, &snapshot),
                     priority: recorded(manifest.as_ref(), &name, "priority")
                         .and_then(Value::as_i64)
                         .unwrap_or(0),
@@ -243,9 +243,15 @@ impl<'a> Pool<'a> {
         let _ = jsonio::write(&self.manifest_file(), &manifest);
     }
 
-    fn verify(&self, key: Option<&[u8]>, file_name: &str, snapshot: &Value) -> Trust {
+    fn verify(
+        &self,
+        key: Option<&[u8]>,
+        manifest: Option<&Value>,
+        file_name: &str,
+        snapshot: &Value,
+    ) -> Trust {
         let Some(key) = key else { return Trust::NoKey };
-        let Some(manifest) = self.manifest() else {
+        let Some(manifest) = manifest else {
             return Trust::Unknown;
         };
         let Some(entry) = manifest.get("accounts").and_then(|a| a.get(file_name)) else {

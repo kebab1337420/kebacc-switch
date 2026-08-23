@@ -7,7 +7,11 @@ use std::path::PathBuf;
 const SETTINGS: [&str; 2] = ["settings.json", "settings.local.json"];
 const SESSION_START: &str = "SessionStart";
 const PRE_TOOL_USE: &str = "PreToolUse";
-const TIMEOUT: u64 = 25;
+/// The session-start hook holds the terminal open until it answers, so it is
+/// not allowed to wait on the network: it decides on the snapshots it already
+/// has and leaves the reading to the watcher it starts. Ten seconds is room for
+/// a slow disk, not for a quota call.
+const TIMEOUT: u64 = 10;
 /// The mid-task hook runs before every single tool call, so it gets a short
 /// leash. All it does is read a stamp file and, at most once an interval, spawn
 /// a detached `auto`: the switch itself never happens on this thread.

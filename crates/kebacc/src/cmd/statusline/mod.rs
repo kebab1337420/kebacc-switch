@@ -550,7 +550,7 @@ fn ask_git(root: &Path) {
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
     crate::proc::detach(&mut command);
-    let _ = command.spawn();
+    let _ = crate::proc::spawn_detached(&mut command);
 }
 
 pub fn gitstat(root: &Path) -> i32 {

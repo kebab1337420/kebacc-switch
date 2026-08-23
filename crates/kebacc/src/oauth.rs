@@ -1,30 +1,13 @@
-//! Renewing a saved login's token pair.
-//!
-//! Claude Code's OAuth refresh rotates: the answer to a refresh carries a new
-//! refresh token and the one that was sent stops working. A pool that saves a
-//! pair once and hands the same pair back on every switch therefore hands back
-//! a pair the server has already retired, and the CLI, unable to refresh it,
-//! asks for a login. So the pair is renewed here, at the moment of the switch,
-//! and what comes back is written into the snapshot before it is written into
-//! the CLI's credentials.
-
 use crate::jsonio;
 use serde_json::{json, Value};
 
 const TOKEN_URL: &str = "https://console.anthropic.com/v1/oauth/token";
-/// Claude Code's public OAuth client. Overridable, so a change on Anthropic's
-/// side does not need a release to work around.
 const CLIENT_ID: &str = "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
-/// How close to expiry a pair is renewed at rather than handed over as it is.
 const MARGIN_SECONDS: i64 = 5 * 60;
 
 pub enum Renewal {
-    /// The pair had time left on it and was left alone.
     Fresh,
-    /// A new pair, as a whole credentials document ready to be written.
     Renewed(String),
-    /// The renewal was attempted and did not happen. The pair is handed over
-    /// unchanged: the CLI's own refresh may still succeed where this did not.
     Failed(String),
 }
 
@@ -73,8 +56,6 @@ fn now_ms() -> i64 {
     chrono::Utc::now().timestamp_millis()
 }
 
-/// True when the access token is gone or close enough to gone that handing it
-/// over would make the CLI refresh it, which is the thing this avoids.
 pub fn stale(raw: &str) -> bool {
     match expires_at(raw) {
         Some(at) => at - now_ms() <= MARGIN_SECONDS * 1000,
@@ -92,8 +73,6 @@ pub fn renew_if_stale(raw: &str) -> Renewal {
     }
 }
 
-/// Ask for a new pair and fold it into the credentials document, leaving every
-/// other field (the scopes, the subscription, the rate limit tier) as it was.
 pub fn renew(raw: &str) -> Result<String, String> {
     let Some(refresh) = refresh_token(raw) else {
         return Err("the saved credentials carry no refresh token".into());
@@ -130,9 +109,6 @@ fn fold(raw: &str, answer: &Value) -> Result<String, String> {
         .map_err(|problem| format!("the new pair did not serialise: {problem}"))
 }
 
-/// One retry, and only on the answers that are worth retrying: the token
-/// endpoint rate limits, and a switch that gives up on the first 429 is a
-/// switch that lands on a login prompt for no reason.
 fn post(refresh: &str) -> Result<Value, String> {
     let mut last = String::new();
     for attempt in 0..2 {
@@ -152,7 +128,6 @@ fn post(refresh: &str) -> Result<Value, String> {
     Err(last)
 }
 
-/// The error flag says whether another go is worth anything.
 fn call(refresh: &str) -> Result<Value, (String, bool)> {
     let body = json!({
         "grant_type": "refresh_token",
@@ -196,9 +171,6 @@ fn error_of(text: &str) -> Option<String> {
     jsonio::str_of(error, "type").or_else(|| jsonio::str_of(error, "message"))
 }
 
-/// The status of the answer is read here rather than raised as an error,
-/// because what the body says (`invalid_grant` against anything else) is the
-/// difference between "log in again" and "try again later".
 fn agent() -> ureq::Agent {
     let config = ureq::Agent::config_builder()
         .timeout_global(Some(std::time::Duration::from_secs(15)))

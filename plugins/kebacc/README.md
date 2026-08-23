@@ -19,23 +19,34 @@ own runtime first.
 
 ## What it does
 
+- **status** — one screen: the live login of each pool, what it has left, what
+  is armed, whether the background watcher is up, and when the last switch
+  happened.
 - **add** — saves the login the CLI is using right now into a pool.
-- **list** — the saved logins with what is known of their quota. `-Refresh`
-  asks the provider's API; without it the numbers come from the cache.
+- **list** — the saved logins with what is known of their quota, and how old
+  that reading is. `-Refresh` asks the provider's API; without it the numbers
+  come from the cache. `-Json` prints the same thing for a script.
 - **switch** — puts another saved login in front of the CLI.
 - **auto** — switches only when the one in use is out of quota, and only to one
   that is not. It does nothing on its own: something has to call it, which is
   what `kebacc install -AutoSwitch` sets up.
+- **set** — per-pool settings, kept beside the accounts. `-Rank <n>` is the
+  order `auto` picks from, highest first; `-FiveHour <pct>` and `-SevenDay
+  <pct>` are the caps for that pool alone, and outrank the environment
+  variables. `off` puts a cap back to the default.
 - **remove** — forgets a saved login. The live session is untouched.
+- **watch** — the background check that covers a turn with no tool call in it.
+  `watch status` says whether one is up, `watch stop` takes it down.
 - **doctor** — what is installed, what is readable, what the pool thinks of
-  itself. `-Protect` re-seals plain-text snapshots, `-Adopt` stamps the ones
-  this machine never registered, `-Rollback` puts back the credentials from
-  before the last switch, `-Clean` deletes files an earlier version left behind.
+  itself. `-Fix` takes every repair below at once: `-Protect` re-seals
+  plain-text snapshots, `-Adopt` stamps the ones this machine never registered,
+  `-Clean` deletes files an earlier version left behind. `-Rollback` puts back
+  the credentials from before the last switch.
 - **update** — replaces the installed binary with the newest release.
   `-Check` only says whether one is out.
 
-`list`, `auto` and `doctor` with no flag mean every pool. `add`, `switch` and
-`remove` need one: `-claude`/`-cc`, `-codex`/`-cx`, `-antigravity`/`-ag`.
+`list`, `auto`, `status` and `doctor` with no flag mean every pool. `add`,
+`switch`, `remove` and `set` need one: `-claude`/`-cc`, `-codex`/`-cx`, `-antigravity`/`-ag`.
 
 ```
 kebacc list
@@ -250,6 +261,7 @@ Linux. Download the one for the machine and ask it to install itself.
 ## Layout
 
 ```
+.claude-plugin/plugin.json      what makes this directory an installable plugin
 src/commands/*.md               the slash commands, carried by the binary
                                  as include_str!, one per entry in COMMANDS
 VERSION                         the number the install stamps into .version

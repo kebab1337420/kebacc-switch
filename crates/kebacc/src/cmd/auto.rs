@@ -16,9 +16,6 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
         }
     };
     let started = Instant::now();
-    // Offline answers from the snapshots on disk, whatever their age, and never
-    // leaves the machine. The session-start hook runs that way: the terminal
-    // waits on it.
     let cached_only = || opts.offline || started.elapsed() >= BUDGET;
     let read = |entry: &crate::pool::Entry| {
         if cached_only() {
@@ -52,9 +49,6 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
         );
     }
 
-    // What the session is told about the account it is leaving. The switch on
-    // its own reads as bookkeeping; the point worth making is that the quota ran
-    // out and that this is not a reason to stop what is being done.
     let mut warning: Option<String> = None;
     let mut blind = false;
     if let Some(current) = current {
@@ -95,11 +89,12 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
     let mut soonest: Option<DateTime<Utc>> = None;
     let mut fallback: Vec<(&crate::pool::Entry, Option<usage::Usage>)> = Vec::new();
 
-    let candidates: Vec<&crate::pool::Entry> = pool
+    let mut candidates: Vec<&crate::pool::Entry> = pool
         .iter()
         .filter(|entry| !current.is_some_and(|c| c.file == entry.file))
         .filter(|entry| entry.trust != Trust::Changed && entry.creds.is_some())
         .collect();
+    candidates.sort_by_key(|entry| std::cmp::Reverse(entry.priority));
     let readings = if cached_only() {
         candidates
             .iter()
@@ -176,15 +171,11 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
         None => "Every saved account is capped.".to_string(),
     };
     note(&capped, Color::Red);
-    // Nowhere to move to, which is still not a reason to stop: the account
-    // answers until it actually refuses, and the next check switches the moment
-    // one frees up.
     if opts.spawned {
-        if let Some(warning) = warning.as_deref() {
-            leave_note(&format!(
-                "{warning} {capped} Carry on: the switch happens on its own as soon as one has room."
-            ));
-        }
+        let head = warning.map(|text| format!("{text} ")).unwrap_or_default();
+        leave_note(&format!(
+            "{head}{capped} Carry on: the switch happens on its own as soon as one has room."
+        ));
     }
     20
 }
@@ -211,10 +202,6 @@ fn take(
         .map(|u| u.as_pair())
         .unwrap_or_else(|| "usage n/a".into());
     let line = format!("Switched {} to {} ({pair}).", provider.label, entry.email);
-    // A mid-task switch runs detached, with nowhere to print: whoever spawned
-    // it is long gone and the session never hears about it. Leave the line
-    // where the next hook can pick it up. A switch anyone can see the output of
-    // needs no note.
     if spawned {
         let head = warning.map(|text| format!("{text} ")).unwrap_or_default();
         leave_note(&format!(
@@ -225,9 +212,6 @@ fn take(
     10
 }
 
-/// Where a detached switch leaves word of what it did. Read and removed by the
-/// next mid-task hook, which is the first thing after it with a way to reach
-/// the session.
 pub fn note_file() -> std::path::PathBuf {
     crate::provider::state_dir().join("switched.note")
 }
@@ -236,8 +220,6 @@ fn leave_note(text: &str) {
     let _ = std::fs::write(note_file(), text);
 }
 
-/// Take the note left by a detached switch, if there is one. Reading it clears
-/// it: the same switch is never announced twice.
 pub fn take_note() -> Option<String> {
     let text = std::fs::read_to_string(note_file()).ok()?;
     let _ = std::fs::remove_file(note_file());

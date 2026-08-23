@@ -387,16 +387,11 @@ pub fn newest_backup(provider: &Provider) -> Option<Backup> {
     Some(Backup { raw, at })
 }
 
-/// What a switch did, beyond succeeding. The warning is what the caller says
-/// out loud: the pair went over as it was, and the CLI may ask for a login.
 pub struct Activation {
     pub renewed: bool,
     pub warning: Option<String>,
 }
 
-/// Where the account this machine last switched to is written down, so that a
-/// pair the CLI rotates afterwards can be filed under the login it belongs to
-/// rather than under whichever login `~/.claude.json` happens to name.
 fn active_file(provider: &Provider) -> PathBuf {
     crate::provider::state_dir().join(format!("active-{}.json", provider.id.as_str()))
 }
@@ -414,14 +409,6 @@ fn active_email(provider: &Provider) -> Option<String> {
     jsonio::str_of(&jsonio::read(&active_file(provider))?, "email")
 }
 
-/// The pair the CLI is using right now, saved back into the pool before it is
-/// overwritten.
-///
-/// Claude Code renews its own token as it works, and the renewal retires the
-/// pair the pool holds. Switching away without saving what the CLI ended up
-/// with is therefore what makes the account unusable next time round: the
-/// snapshot keeps a pair the server has already forgotten. This runs on the
-/// way out of every switch.
 pub fn capture(provider: &Provider, pool: &[crate::pool::Entry]) {
     let Some(raw) = creds_raw(provider) else {
         return;
@@ -530,6 +517,15 @@ pub fn activate(provider: &Provider, entry: &crate::pool::Entry) -> Result<Activ
         }
         remember_active(provider, &entry.email, &creds);
         crate::log::line(&format!("switch: {} is now the live login", entry.email));
+        let _ = std::fs::write(
+            crate::provider::state_dir().join("switch.last"),
+            format!(
+                "{} {} {}",
+                crate::usage::now_iso(),
+                provider.label,
+                entry.email
+            ),
+        );
         Ok(Activation { renewed, warning })
     })?
 }

@@ -14,6 +14,65 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+
+  checks:
+    name: checks
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      # The version a plugin stamps into its marker file, the version its
+      # manifest advertises, and the version cargo built are three copies of one
+      # number. A release where they disagree installs a binary that then thinks
+      # it is out of date, and updates itself in a loop.
+      - name: The versions agree
+        run: |
+          set -eu
+          crate=$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' crates/kebacc/Cargo.toml | head -n 1)
+          marked=$(tr -d ' \t\r\n' < plugins/kebacc/VERSION)
+          manifest=$(sed -n 's/.*"version" *: *"\([^"]*\)".*/\1/p' plugins/kebacc/.claude-plugin/plugin.json | head -n 1)
+          test "$marked" = "$crate" || {
+            echo "plugins/kebacc/VERSION is $marked, the crate is $crate" >&2
+            exit 1
+          }
+          test "$manifest" = "$crate" || {
+            echo "plugin.json says $manifest, the crate is $crate" >&2
+            exit 1
+          }
+          echo "the plugin, its manifest and the crate all say $crate"
+
+      # The binary carries the slash commands inside it, one include_str! each,
+      # so a command added to the directory and forgotten in install.rs ships as
+      # a command nobody gets, and a name left in install.rs after its file is
+      # deleted fails the build.
+      - name: Every command on disk is one the binary carries
+        run: |
+          set -eu
+          bad=0
+          carried=$(grep -o "commands/kebacc-[^\"]*\.md" "crates/kebacc/src/cmd/install.rs" |
+            sed 's|.*/||' | sort -u)
+          for file in plugins/kebacc/src/commands/*.md; do
+            name=${file##*/}
+            echo "$carried" | grep -qx "$name" ||
+              { echo "$name is on disk but not carried" >&2; bad=1; }
+          done
+          for name in $carried; do
+            [ -f "plugins/kebacc/src/commands/$name" ] ||
+              { echo "$name is carried but not on disk" >&2; bad=1; }
+          done
+          test "$bad" = 0
+          echo "every plugin command is carried"
+
+      # The marketplace entry has to point at a plugin that is actually there.
+      - name: The marketplace entry resolves
+        run: |
+          set -eu
+          for file in .claude-plugin/marketplace.json plugins/kebacc/.claude-plugin/plugin.json; do
+            python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$file"
+          done
+          test -d plugins/kebacc/src/commands
+          echo "the marketplace points at plugins/kebacc"
+
   test:
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
@@ -46,48 +105,6 @@ jobs:
         run: |
           set -eu
           cargo run --release -p kebacc -- --version
-
-      # The version a plugin stamps into its marker file, the version the binary
-      # reports, and the version cargo built are three copies of one number. A
-      # release where they disagree installs a binary that then thinks it is out
-      # of date, and updates itself in a loop.
-      - name: The versions agree
-        if: runner.os != 'Windows'
-        run: |
-          set -eu
-          check() {
-            crate=$(sed -n 's/^version *= *"\([^"]*\)".*/\1/p' "crates/$1/Cargo.toml" | head -n 1)
-            marked=$(tr -d ' \t\r\n' < "plugins/$2/VERSION")
-            test "$marked" = "$crate" || {
-              echo "plugins/$2/VERSION is $marked, the crate is $crate" >&2
-              exit 1
-            }
-            echo "$2 VERSION says $crate"
-          }
-          check kebacc kebacc
-
-      # The binary carries the slash commands inside it, one include_str! each,
-      # so a command added to the directory and forgotten in COMMANDS ships as
-      # a command nobody gets, and a name left in COMMANDS after its file is
-      # deleted fails the build.
-      - name: Every command on disk is one the binary carries
-        if: runner.os != 'Windows'
-        run: |
-          set -eu
-          bad=0
-          carried=$(grep -o "commands/kebacc-[^\"]*\\.md" "crates/kebacc/src/cmd/install.rs" |
-            sed 's|.*/||' | sort -u)
-          for file in plugins/kebacc/src/commands/*.md; do
-            name=${file##*/}
-            echo "$carried" | grep -qx "$name" ||
-              { echo "$name is on disk but not carried" >&2; bad=1; }
-          done
-          for name in $carried; do
-            [ -f "plugins/kebacc/src/commands/$name" ] ||
-              { echo "$name is carried but not on disk" >&2; bad=1; }
-          done
-          test "$bad" = 0
-          echo "every plugin command is carried"
 
       - name: The binaries install and uninstall themselves
         if: runner.os != 'Windows'

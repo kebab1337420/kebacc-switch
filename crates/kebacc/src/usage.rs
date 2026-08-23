@@ -6,34 +6,36 @@ use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 use std::path::Path;
 
-/// Where an account counts as spent. Not 100, and not 99 either: the switch has
-/// to land while there is still quota left to spend, since the check runs a
-/// moment before the requests it protects. Two points is the margin that buys —
-/// enough for the turn in flight, small enough that almost nothing is left
-/// unused on the account being left behind.
 pub const FIVE_HOUR_CAP: f64 = 98.0;
 pub const SEVEN_DAY_CAP: f64 = 98.0;
 const CACHE_SECONDS: i64 = 60;
-/// How close to a cap a reading has to be for the cache to stop being trusted.
-/// Far from the cap, a minute-old number cannot be wrong in a way that matters:
-/// nothing burns 40 points of a window in a minute. Near it, that same minute
-/// is the difference between switching in time and spending a turn on an
-/// account that is already refusing.
 const HOT_MARGIN: f64 = 10.0;
-/// What the cache is worth once a reading is that close. Short enough that the
-/// switch lands inside the margin the threshold leaves, long enough that a
-/// burst of tool calls does not fetch once per call.
 const HOT_CACHE_SECONDS: i64 = 5;
 
+fn pool_caps() -> &'static std::sync::RwLock<[Option<f64>; 2]> {
+    static CAPS: std::sync::OnceLock<std::sync::RwLock<[Option<f64>; 2]>> =
+        std::sync::OnceLock::new();
+    CAPS.get_or_init(|| std::sync::RwLock::new([None, None]))
+}
+
+pub fn use_pool_caps(caps: [Option<f64>; 2]) {
+    if let Ok(mut slot) = pool_caps().write() {
+        *slot = caps;
+    }
+}
+
 pub fn caps() -> [(&'static str, f64); 2] {
+    let pool = pool_caps().read().map(|slot| *slot).unwrap_or([None, None]);
     [
         (
             "five_hour",
-            cap_from_env("CLAUDE_AUTOSWITCH_THRESHOLD", FIVE_HOUR_CAP),
+            pool[0].unwrap_or_else(|| cap_from_env("CLAUDE_AUTOSWITCH_THRESHOLD", FIVE_HOUR_CAP)),
         ),
         (
             "seven_day",
-            cap_from_env("CLAUDE_AUTOSWITCH_WEEKLY_THRESHOLD", SEVEN_DAY_CAP),
+            pool[1].unwrap_or_else(|| {
+                cap_from_env("CLAUDE_AUTOSWITCH_WEEKLY_THRESHOLD", SEVEN_DAY_CAP)
+            }),
         ),
     ]
 }
@@ -319,6 +321,29 @@ pub fn from_cache(cache: Option<&Value>) -> Option<Usage> {
     })
 }
 
+pub fn cache_age(cache: Option<&Value>) -> Option<chrono::Duration> {
+    let at = cache
+        .and_then(|c| jsonio::str_of(c, "checkedAt"))
+        .and_then(|at| parse_time(&at))?;
+    Some(Utc::now() - at)
+}
+
+pub fn age_text(span: chrono::Duration) -> String {
+    let seconds = span.num_seconds().max(0);
+    if seconds < 90 {
+        return format!("{seconds}s");
+    }
+    let minutes = seconds / 60;
+    if minutes < 90 {
+        return format!("{minutes}m");
+    }
+    let hours = minutes / 60;
+    if hours < 48 {
+        return format!("{hours}h");
+    }
+    format!("{}d", hours / 24)
+}
+
 pub fn cache_rolled_over(cache: Option<&Value>) -> bool {
     let Some(cache) = cache else {
         return false;
@@ -349,9 +374,6 @@ fn cache_fresh(cache: Option<&Value>) -> bool {
     (Utc::now() - at).num_seconds() < cache_seconds(cache)
 }
 
-/// How long a cached reading may be trusted, given what it says. A window
-/// already within `HOT_MARGIN` of its cap gets a short leash; everything else
-/// keeps the full minute.
 pub fn cache_seconds(cache: Option<&Value>) -> i64 {
     let hot = caps().iter().any(|(name, cap)| {
         window_now(cache.and_then(|c| c.get(*name)))

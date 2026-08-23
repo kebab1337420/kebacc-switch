@@ -106,7 +106,7 @@ fn build(payload: &Value) -> String {
         vec![line.context()],
         vec![
             quota(limits.get("five_hour"), "5h"),
-            quota(limits.get("seven_day"), "7j"),
+            quota(limits.get("seven_day"), "7d"),
         ],
         account::segments(payload)
             .into_iter()
@@ -196,7 +196,7 @@ fn until_reset(value: Option<&Value>) -> Option<String> {
     if hours < 24 {
         return Some(format!("{hours}h"));
     }
-    Some(format!("{}j", (hours as f64 / 24.0).round() as i64))
+    Some(format!("{}d", (hours as f64 / 24.0).round() as i64))
 }
 
 fn quota(limit: Option<&Value>, label: &str) -> Option<String> {

@@ -7,34 +7,16 @@ use std::path::PathBuf;
 const SETTINGS: [&str; 2] = ["settings.json", "settings.local.json"];
 const SESSION_START: &str = "SessionStart";
 const PRE_TOOL_USE: &str = "PreToolUse";
-/// The session-start hook holds the terminal open until it answers, so it is
-/// not allowed to wait on the network: it decides on the snapshots it already
-/// has and leaves the reading to the watcher it starts. Ten seconds is room for
-/// a slow disk, not for a quota call.
 const TIMEOUT: u64 = 10;
-/// The mid-task hook runs before every single tool call, so it gets a short
-/// leash. All it does is read a stamp file and, at most once an interval, spawn
-/// a detached `auto`: the switch itself never happens on this thread.
 const MIDTASK_TIMEOUT: u64 = 10;
 
-/// What arming does to the scope that is already in the settings.
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Mode {
-    /// Write the pool asked for, whatever was armed before.
     Set,
-    /// Add this pool to what is armed, leaving the rest of the scope alone.
     Merge,
-    /// Take this pool out. What is left stays armed. If nothing remains, the
-    /// hooks go.
     Drop,
 }
 
-/// Arm or disarm the auto-switch. This only edits the hooks in `settings.json`:
-/// it never switches the account, whatever the quota says.
-///
-/// Two hooks go in, not one. `SessionStart` opens the next session on an
-/// account with room; `PreToolUse` keeps that true *during* a run, so a quota
-/// that dies mid-task is noticed then instead of at the next launch.
 pub fn run(wanted: &Wanted, quiet: bool, mode: Mode) -> i32 {
     if wanted.is_off() && mode != Mode::Set {
         say(
@@ -61,9 +43,6 @@ pub fn run(wanted: &Wanted, quiet: bool, mode: Mode) -> i32 {
 
     let dir = provider::claude_config_dir();
     let mut touched = false;
-    // What was actually written, which under -Merge can be wider than what was
-    // asked for and under -Drop is nothing at all. Reported instead of the
-    // request.
     let mut written = asked.clone();
 
     for name in SETTINGS {
@@ -74,7 +53,6 @@ pub fn run(wanted: &Wanted, quiet: bool, mode: Mode) -> i32 {
         let before = settings.clone();
         let existing = strip(&mut settings);
         if let (Some(asked), Some(command)) = (&asked, existing.first()) {
-            // Keep the binary the hooks already pointed at, whatever it is.
             let exe = canonical_exe(&exe_of(command));
             let had = crate::cmd::doctor::hook_wanted(command);
             let scope = match mode {
@@ -101,8 +79,6 @@ pub fn run(wanted: &Wanted, quiet: bool, mode: Mode) -> i32 {
         }
     }
 
-    // Nothing was armed anywhere, so there is nothing to widen: Set and Merge
-    // write the first pair of hooks, Drop has nothing to take out.
     if let Some(scope) = &asked {
         if !touched && mode != Mode::Drop {
             let path = dir.join(SETTINGS[0]);
@@ -121,6 +97,10 @@ pub fn run(wanted: &Wanted, quiet: bool, mode: Mode) -> i32 {
         }
     }
 
+    if written.as_ref().is_none_or(Wanted::is_off) {
+        crate::cmd::watch::request_stop();
+    }
+
     if !quiet {
         match &written {
             Some(scope) if !scope.is_off() => println!("auto {}", scope.display()),
@@ -130,9 +110,20 @@ pub fn run(wanted: &Wanted, quiet: bool, mode: Mode) -> i32 {
     0
 }
 
-/// Rewrite leftover `-Provider` hooks and leftover pool-binary paths.
-/// Cheap enough to run at every start: one JSON read, a write only if something
-/// actually changed.
+pub fn armed() -> Option<Wanted> {
+    let dir = provider::claude_config_dir();
+    let mut scope = Wanted::off();
+    for name in SETTINGS {
+        let Some(settings) = jsonio::read(&dir.join(name)) else {
+            continue;
+        };
+        for command in crate::cmd::doctor::auto_hooks(&settings) {
+            scope = scope.union(&crate::cmd::doctor::hook_wanted(&command));
+        }
+    }
+    (!scope.is_off()).then_some(scope)
+}
+
 pub fn migrate() {
     let dir = provider::claude_config_dir();
     for name in SETTINGS {
@@ -148,8 +139,6 @@ pub fn migrate() {
     }
 }
 
-/// Writes the pair: the session-start hook and the mid-task one, same binary,
-/// same pool.
 fn arm_both(settings: &mut Value, exe: &str, scope: &Wanted) {
     add(
         settings,
@@ -206,16 +195,12 @@ fn migrated_line(command: &str) -> Option<String> {
     (next != command).then_some(next)
 }
 
-/// Takes every auto hook out of the settings, session-start and mid-task both,
-/// and hands back their commands.
 fn strip(settings: &mut Value) -> Vec<String> {
     let mut removed = strip_event(settings, SESSION_START);
     removed.extend(strip_event(settings, PRE_TOOL_USE));
     removed
 }
 
-/// Strips the auto hooks out of one event, leaving no empty group, no empty
-/// event, no empty `hooks` behind.
 fn strip_event(settings: &mut Value, event: &str) -> Vec<String> {
     let mut removed = Vec::new();
     let Some(hooks) = settings.get_mut("hooks").filter(|h| h.is_object()) else {
@@ -276,8 +261,6 @@ fn add(settings: &mut Value, event: &str, matcher: Option<&str>, command: &str, 
     }
 }
 
-/// Keeps the binary the hook already pointed at, so re-arming only changes the
-/// pool and never the path.
 fn exe_of(command: &str) -> String {
     crate::cmd::doctor::quoted_words(command)
         .into_iter()
@@ -315,13 +298,6 @@ fn canonical_exe(exe: &str) -> String {
     text
 }
 
-/// The binary the hooks should name when there is none already there to copy.
-///
-/// The copy running this, first: `arm` is what the installers call, they call it
-/// as the binary they just installed, and an installer pointed at a tools
-/// directory of its own has to arm that one and not whatever is in the default
-/// place. `~/.claude-tools` is the fallback for the case where the running path
-/// cannot be read at all.
 fn installed() -> PathBuf {
     let name = if cfg!(windows) {
         "kebacc.exe"
@@ -332,15 +308,6 @@ fn installed() -> PathBuf {
     std::env::current_exe().unwrap_or(tools)
 }
 
-/// Claude Code hands a hook to a shell, and on Windows that shell is bash, where
-/// a backslash is an escape rather than a separator: `C:\Users\me\...` arrives
-/// as `C:Usersme...` and the hook fails at every session start with "command not
-/// found". Forward slashes survive that, and Windows takes them as separators
-/// too, which is why the status line has been written that way all along. The
-/// quotes are for the spaces a path may have, and cost nothing when it has none.
-///
-/// A path already written the old way is normalised here as well, so re-arming
-/// repairs a hook rather than copying its breakage forward.
 fn quoted(path: &str) -> String {
     let text = path.trim_matches('"').replace('\\', "/");
     format!("\"{text}\"")
@@ -448,10 +415,6 @@ mod tests {
 
     #[test]
     fn a_windows_path_reaches_the_shell_with_its_separators() {
-        // Bash is what runs the hook, and it eats every backslash it is given.
-        // The line has to name a path that survives that, whether it is built
-        // from this machine's own path or read back off a hook written before
-        // this was true.
         let raw = "C:\\Users\\me\\.claude-tools\\kebacc.exe";
         let claude = Wanted::one(ProviderId::Claude);
         assert_eq!(

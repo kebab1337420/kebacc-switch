@@ -27,8 +27,6 @@ impl ProviderId {
         }
     }
 
-    /// Keychain / libsecret account the AES wrapping key is stored under.
-    /// Saved logins on existing machines only open if this stays this string.
     pub fn seal_account(self) -> &'static str {
         match self {
             ProviderId::Antigravity => "kebacc-antigravity",
@@ -37,10 +35,6 @@ impl ProviderId {
     }
 }
 
-/// Which pools a command should touch.
-///
-/// No flag means every pool for list/auto/doctor, and an error for
-/// add/switch/remove. `-claude -ag` is those two, not a silent `all`.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Wanted {
     ids: Vec<ProviderId>,
@@ -189,7 +183,6 @@ impl Wanted {
         }
     }
 
-    /// Pools this command runs on. Unspecified means every pool.
     pub fn ids(&self) -> Vec<ProviderId> {
         if self.off {
             Vec::new()
@@ -219,7 +212,6 @@ impl Wanted {
         }
     }
 
-    /// Flags to hand a child. Empty when every pool, which is the default.
     pub fn flags(&self) -> Vec<String> {
         if self.off {
             return vec!["-off".into()];

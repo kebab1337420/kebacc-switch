@@ -39,6 +39,12 @@ impl Report {
 
 pub fn run(provider: &Provider, opts: &Options) -> i32 {
     let mut report = Report { problems: 0 };
+    if opts.fix {
+        say(
+            "  repairing what can be repaired: -Protect -Adopt -Clean",
+            Color::Dim,
+        );
+    }
 
     say(
         &format!("{} — {}", provider.label, provider.store.display()),
@@ -243,7 +249,6 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
     exit_code(&report)
 }
 
-/// What the saved pair is worth, and, when asked, a new one in its place.
 fn token_report(
     provider: &Provider,
     entry: &pool::Entry,
@@ -343,13 +348,16 @@ fn check_settings(report: &mut Report) {
         )),
     }
 
-    // The watcher covers what no hook can: a turn with no tool call in it. It
-    // is started by the hooks and dies with the session, so its absence is
-    // worth a line but never an alarm.
-    if super::watch::on_duty() {
+    if let Some((pid, version, age)) = super::watch::duty() {
+        let who = match (pid, version) {
+            (Some(pid), Some(version)) => format!(" (pid {pid}, kebacc {version})"),
+            (Some(pid), None) => format!(" (pid {pid})"),
+            _ => String::new(),
+        };
         report.good(&format!(
-            "a watcher is on duty, checking every {}s even with no tool call",
-            super::watch::interval().as_secs()
+            "a watcher is on duty{who}, checking every {}s even with no tool call; last beat {} ago",
+            super::watch::interval().as_secs(),
+            crate::usage::age_text(chrono::Duration::from_std(age).unwrap_or_default())
         ));
     } else {
         report.good("no watcher running yet. The next hook starts one.");
@@ -360,8 +368,6 @@ pub fn auto_hooks(settings: &Value) -> Vec<String> {
     hooks_at(settings, "SessionStart")
 }
 
-/// The mid-task half: the `PreToolUse` hook that lets auto act while Claude is
-/// in the middle of a run, instead of waiting for the next session.
 pub fn midtask_hooks(settings: &Value) -> Vec<String> {
     hooks_at(settings, "PreToolUse")
 }
@@ -391,7 +397,6 @@ fn hooks_at(settings: &Value, event: &str) -> Vec<String> {
     found
 }
 
-/// The program a command line names, without a path or `.exe`.
 fn program_stem(command: &str) -> Option<String> {
     let word = quoted_words(command).into_iter().next()?;
     let name = word
@@ -402,10 +407,6 @@ fn program_stem(command: &str) -> Option<String> {
     Some(name.strip_suffix(".exe").unwrap_or(&name).to_string())
 }
 
-/// Whether this command line names our binary, including the name it had
-/// before the rename, the scripts that came before that, and the leftover
-/// `kebacc-codex` / `kebacc-antigravity` binaries from when each pool had
-/// its own process.
 pub fn is_ours_binary(command: &str) -> bool {
     let lower = command.to_lowercase();
     if lower.contains("claude-c") {

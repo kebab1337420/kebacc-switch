@@ -22,7 +22,7 @@ use cmd::Options;
 use provider::{parse_pool_name, ProviderId};
 use term::{say, Color};
 
-fn bind_seal(id: ProviderId) {
+pub fn bind_seal(id: ProviderId) {
     kebacc_core::seal::set_secret_account(id.seal_account());
 }
 
@@ -36,13 +36,18 @@ fn main() {
 fn usage_text() {
     println!("kebacc <command> [-claude|-cc] [-codex|-cx] [-antigravity|-ag] [-all]");
     println!();
-    println!("  list        saved logins and their quota  (-Refresh asks the API)");
+    println!("  status      what is live, what it has left, what is armed");
+    println!(
+        "  list        saved logins and their quota  (-Refresh asks the API, -Json for a script)"
+    );
     println!("  add         save the login the CLI is using right now");
     println!("  switch      put a saved login in front");
     println!("  remove      forget a saved login");
     println!("  auto        switch only if the one in use is capped");
     println!("  arm         turn the auto-switch on or off, change nothing now");
-    println!("  doctor      check the install and the pools (-Protect, -Adopt, -Clean, -Renew to repair, -Rollback to undo a switch)");
+    println!("  set         per-pool settings (-Rank <n>, -FiveHour <pct>, -SevenDay <pct>)");
+    println!("  doctor      check the install and the pools (-Fix repairs everything it can; -Protect, -Adopt, -Clean, -Renew one at a time, -Rollback to undo a switch)");
+    println!("  watch       the background switcher: 'watch status', 'watch stop'");
     println!("  statusline  the Claude Code status line, from a payload on stdin");
     println!("  update      install the newest release (-Check to only say whether one is out)");
     println!("  install     put the binary, slash commands and hooks in place");
@@ -54,6 +59,8 @@ fn usage_text() {
     println!("  kebacc switch -codex -Email you@example.com");
     println!("  kebacc arm -ag");
     println!("  kebacc arm off");
+    println!("  kebacc set -cc -Rank 10 -Email you@example.com");
+    println!("  kebacc set -cc -FiveHour 90");
     println!();
     println!("  list, auto, doctor, arm: no flag means every pool");
     println!("  add, switch, remove: name one pool");
@@ -100,6 +107,8 @@ fn dispatch(args: &[String]) -> i32 {
             | "install"
             | "uninstall"
             | "reap"
+            | "set"
+            | "status"
     ) {
         say(&format!("Unknown command '{command}'."), Color::Red);
         usage_text();
@@ -118,6 +127,33 @@ fn dispatch(args: &[String]) -> i32 {
         return cmd::statusline::gitstat(std::path::Path::new(root));
     }
 
+    if command == "watch" {
+        match args.get(1).map(|a| a.to_lowercase()).as_deref() {
+            Some("stop") => {
+                let stopped = cmd::watch::stop_and_wait(std::time::Duration::from_secs(5));
+                say(
+                    if stopped {
+                        "The watcher is down."
+                    } else {
+                        "No watcher was running."
+                    },
+                    Color::Dim,
+                );
+                return 0;
+            }
+            Some("status") => {
+                let up = cmd::watch::on_duty();
+                println!(
+                    "watcher {} (every {}s)",
+                    if up { "up" } else { "down" },
+                    cmd::watch::interval().as_secs()
+                );
+                return i32::from(!up);
+            }
+            _ => {}
+        }
+    }
+
     let mut options = match parse(args.get(1..).unwrap_or(&[])) {
         Ok(parsed) => parsed,
         Err(problem) => {
@@ -129,8 +165,6 @@ fn dispatch(args: &[String]) -> i32 {
     match command {
         "install" => return cmd::install::run(&options),
         "uninstall" => return cmd::uninstall::run(&options),
-        // Not in the help: it is the copy an uninstall leaves behind to take
-        // the name of the binary once this process lets go of it.
         "reap" => return cmd::uninstall::reap(&options),
         _ => {}
     }
@@ -160,19 +194,9 @@ fn dispatch(args: &[String]) -> i32 {
         return cmd::update::run(&options);
     }
 
-    if command == "auto" && options.hook && !options.spawned {
+    if command == "auto" && options.hook && !options.spawned && !options.midtask {
         cmd::update::maybe();
-        // Session start is the other place a session announces itself, and the
-        // one that gets the watcher up before the first tool call.
         cmd::watch::ensure_running(&options.wanted);
-        // Session start is also the one hook the terminal waits on: nothing is
-        // drawn until it answers. A quota call per saved account is seconds of
-        // a session opening on an empty screen — more when a token has to be
-        // renewed first, since that holds the credential lock every other
-        // terminal starting at the same moment is queued behind. So it decides
-        // on the snapshots it already has. The watcher started just above reads
-        // the live numbers a moment later, and the mid-task hook tells the
-        // session if that moved the account.
         options.offline = waits_on_the_terminal(command, &options);
     }
 
@@ -180,11 +204,15 @@ fn dispatch(args: &[String]) -> i32 {
         return cmd::watch::run(&options.wanted);
     }
 
+    if command == "status" {
+        return cmd::status::run(&options.wanted, &options);
+    }
+
     if command == "auto" && options.midtask {
         return cmd::midtask::run(&options.wanted);
     }
 
-    if matches!(command, "add" | "switch" | "remove") {
+    if matches!(command, "add" | "switch" | "remove" | "set") {
         let Some(id) = options.wanted.exactly_one() else {
             say("Name a pool: -claude, -codex or -ag.", Color::Red);
             return 64;
@@ -214,12 +242,14 @@ fn hushed(code: i32, options: &Options) -> i32 {
 
 fn run(command: &str, id: ProviderId, options: &Options) -> i32 {
     let provider = provider::spec(id);
+    usage::use_pool_caps(pool::Pool::new(&provider).caps());
     match command {
         "add" => cmd::add::run(&provider, options),
         "list" if options.countdown => cmd::countdown::run(&provider, options),
         "list" => cmd::list::run(&provider, options),
         "switch" => cmd::switch::run(&provider, options),
         "remove" => cmd::remove::run(&provider, options),
+        "set" => cmd::set::run(&provider, options),
         "auto" => cmd::auto::run(&provider, options),
         "refresh" => cmd::refresh::run(&provider, options),
         _ => cmd::doctor::run(&provider, options),
@@ -248,9 +278,6 @@ fn parse(tokens: &[String]) -> Result<Options, String> {
             }
             continue;
         }
-        // `-ToolsDir` and `--tools-dir` are the same option: the two installers
-        // this replaced took the Windows spelling and the POSIX one, and the
-        // instructions people have already been given use both.
         let name = token
             .trim_start_matches('-')
             .replace(['-', '_'], "")
@@ -307,6 +334,19 @@ fn parse(tokens: &[String]) -> Result<Options, String> {
             "autoswitch" => options.auto_switch = true,
             "noprofileedit" => options.no_profile_edit = true,
             "pool" => options.pool = true,
+            "json" => options.json = true,
+            "fix" => {
+                options.fix = true;
+                options.protect = true;
+                options.adopt = true;
+                options.clean = true;
+            }
+            "rank" => {
+                let given = value().ok_or("-Rank needs a number.")?;
+                options.rank = Some(given.trim().parse().map_err(|_| "-Rank needs a number.")?);
+            }
+            "fivehour" | "5h" => options.five_hour = Some(cap_value(value(), "-FiveHour")?),
+            "sevenday" | "7d" => options.seven_day = Some(cap_value(value(), "-SevenDay")?),
             "autoupdate" => options.updates = Some(true),
             "noautoupdate" => options.updates = Some(false),
             other => return Err(format!("Unknown option '-{other}'.")),
@@ -315,10 +355,19 @@ fn parse(tokens: &[String]) -> Result<Options, String> {
     Ok(options)
 }
 
-/// Whether this call is the one a terminal is sitting and waiting on: the
-/// session-start hook, and only that one. The mid-task hook shares its flags
-/// but returns in milliseconds by design, and a `-Spawned` copy has nobody
-/// waiting on it at all.
+fn cap_value(given: Option<String>, flag: &str) -> Result<f64, String> {
+    let given = given.ok_or(format!("{flag} needs a percentage, or 'off'."))?;
+    if given.trim().eq_ignore_ascii_case("off") {
+        return Ok(0.0);
+    }
+    given
+        .trim()
+        .parse::<f64>()
+        .ok()
+        .filter(|value| *value > 0.0 && *value <= 100.0)
+        .ok_or(format!("{flag} takes 1 to 100, or 'off'."))
+}
+
 fn waits_on_the_terminal(command: &str, options: &Options) -> bool {
     command == "auto" && options.hook && !options.spawned && !options.midtask
 }

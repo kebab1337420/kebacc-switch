@@ -1,16 +1,7 @@
-//! What happened to a login, written down. Always on, because the failure this
-//! exists for — a switch that lands on a login prompt — is over by the time
-//! anyone thinks to turn a flag on and try again.
-//!
-//! Nothing secret goes in. A token is written as the first ten hex characters
-//! of its SHA-256, which is enough to tell two tokens apart across a session
-//! and worth nothing to whoever reads the file.
-
 use sha2::{Digest, Sha256};
 use std::io::Write;
 use std::path::PathBuf;
 
-/// Where the file is rotated. One turn of the log is kept beside it.
 const MAX_BYTES: u64 = 512 * 1024;
 
 pub fn path() -> PathBuf {
@@ -63,7 +54,6 @@ fn rotate(file: &PathBuf) {
     let _ = std::fs::rename(file, rolled());
 }
 
-/// A token, said out loud without saying the token.
 pub fn fingerprint(secret: Option<&str>) -> String {
     let Some(secret) = secret.filter(|s| !s.is_empty()) else {
         return "none".into();
@@ -75,7 +65,6 @@ pub fn fingerprint(secret: Option<&str>) -> String {
         .collect()
 }
 
-/// An `expiresAt` in milliseconds, as a time a human can compare to now.
 pub fn moment(ms: Option<i64>) -> String {
     let Some(ms) = ms else {
         return "unknown".into();

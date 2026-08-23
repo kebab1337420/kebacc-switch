@@ -3,21 +3,10 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::time::{SystemTime, UNIX_EPOCH};
 
-/// How often the mid-task hook is allowed to look. Five minutes used to be the
-/// figure, then a minute, and both are long enough for a run of turns to keep
-/// going to an account that is already refusing them. Twenty seconds costs
-/// almost nothing now that the usage cache tightens on its own near the cap:
-/// away from it the check reads the cache and never leaves the machine.
 const DEFAULT_INTERVAL_MS: u128 = 20 * 1000;
 
 pub fn run(wanted: &crate::provider::Wanted) -> i32 {
-    // Word of the last detached switch, if one happened since we last ran.
-    // It goes out whatever else this call decides to do: the session has been
-    // spending a turn on an account that moved under it, and that is worth
-    // saying even on a call that is about to keep quiet.
     announce(super::auto::take_note());
-    // A tool call proves the session is alive, and is the cheapest place to
-    // notice the watcher died.
     super::watch::ensure_running(wanted);
     if about_us(&hook_payload()) {
         return 0;
@@ -36,9 +25,6 @@ pub fn run(wanted: &crate::provider::Wanted) -> i32 {
     0
 }
 
-/// Claude Code reads a hook's stdout as JSON and shows `systemMessage` to the
-/// user. Nothing else here can reach the session: the switch itself runs
-/// detached, and its own stdout goes nowhere.
 fn announce(note: Option<String>) {
     let Some(note) = note else {
         return;
@@ -47,7 +33,6 @@ fn announce(note: Option<String>) {
     println!("{payload}");
 }
 
-/// The `PreToolUse` payload, when Claude Code is the one calling.
 fn hook_payload() -> String {
     let stdin = std::io::stdin();
     if stdin.is_terminal() {
@@ -58,15 +43,6 @@ fn hook_payload() -> String {
     text
 }
 
-/// A tool call that is itself a switcher command — listing the accounts,
-/// checking the install — must not switch the account under the user's feet.
-/// They asked to look, not to move.
-///
-/// Only the command actually being run counts. Merely naming us — a `grep
-/// kebacc`, a `cargo test` inside this repository, an edit to a file under
-/// `crates/kebacc/` — is not a switcher call, and used to cost every
-/// mid-task check for the length of a session spent working on the switcher
-/// itself.
 fn about_us(payload: &str) -> bool {
     let Ok(payload) = serde_json::from_str::<serde_json::Value>(payload) else {
         return false;
@@ -81,8 +57,6 @@ fn about_us(payload: &str) -> bool {
     is_switcher(command)
 }
 
-/// The first word of a shell command, minus quotes and any directory in front
-/// of it, is the program. Ours are named after the pool they carry.
 fn is_switcher(command: &str) -> bool {
     let Some(word) = command.split_whitespace().next() else {
         return false;

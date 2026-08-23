@@ -25,6 +25,14 @@ pub const COMMANDS: &[(&str, &str)] = &[
         include_str!("../../../../plugins/kebacc/src/commands/kebacc-remove.md"),
     ),
     (
+        "kebacc-set.md",
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-set.md"),
+    ),
+    (
+        "kebacc-status.md",
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-status.md"),
+    ),
+    (
         "kebacc-switch.md",
         include_str!("../../../../plugins/kebacc/src/commands/kebacc-switch.md"),
     ),

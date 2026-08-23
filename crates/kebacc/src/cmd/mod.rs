@@ -40,6 +40,10 @@ pub struct Options {
     pub drop: bool,
     pub check: bool,
     pub spawned: bool,
+    /// Decide on the snapshots already on disk and never call the quota API.
+    /// What the session-start hook runs on: the terminal shows nothing until
+    /// that hook answers.
+    pub offline: bool,
     pub statusline: Option<bool>,
     pub updates: Option<bool>,
     /// Where the binary lives, for `install` and `uninstall`. Unset means

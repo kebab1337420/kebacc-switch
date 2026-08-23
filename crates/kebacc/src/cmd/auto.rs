@@ -16,8 +16,12 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
         }
     };
     let started = Instant::now();
+    // Offline answers from the snapshots on disk, whatever their age, and never
+    // leaves the machine. The session-start hook runs that way: the terminal
+    // waits on it.
+    let cached_only = || opts.offline || started.elapsed() >= BUDGET;
     let read = |entry: &crate::pool::Entry| {
-        if started.elapsed() >= BUDGET {
+        if cached_only() {
             usage::from_cache(entry.cache.as_ref())
         } else {
             usage::for_entry(provider, entry, false)
@@ -96,7 +100,7 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
         .filter(|entry| !current.is_some_and(|c| c.file == entry.file))
         .filter(|entry| entry.trust != Trust::Changed && entry.creds.is_some())
         .collect();
-    let readings = if started.elapsed() >= BUDGET {
+    let readings = if cached_only() {
         candidates
             .iter()
             .map(|entry| usage::from_cache(entry.cache.as_ref()))

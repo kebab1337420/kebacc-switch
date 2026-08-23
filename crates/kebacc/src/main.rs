@@ -165,6 +165,15 @@ fn dispatch(args: &[String]) -> i32 {
         // Session start is the other place a session announces itself, and the
         // one that gets the watcher up before the first tool call.
         cmd::watch::ensure_running(&options.wanted);
+        // Session start is also the one hook the terminal waits on: nothing is
+        // drawn until it answers. A quota call per saved account is seconds of
+        // a session opening on an empty screen — more when a token has to be
+        // renewed first, since that holds the credential lock every other
+        // terminal starting at the same moment is queued behind. So it decides
+        // on the snapshots it already has. The watcher started just above reads
+        // the live numbers a moment later, and the mid-task hook tells the
+        // session if that moved the account.
+        options.offline = waits_on_the_terminal(command, &options);
     }
 
     if command == "watch" {
@@ -290,6 +299,7 @@ fn parse(tokens: &[String]) -> Result<Options, String> {
             "drop" => options.drop = true,
             "check" => options.check = true,
             "spawned" => options.spawned = true,
+            "offline" => options.offline = true,
             "statusline" => options.statusline = Some(true),
             "nostatusline" => options.statusline = Some(false),
             "toolsdir" => options.tools_dir = Some(value().ok_or("-ToolsDir needs a directory.")?),
@@ -305,6 +315,14 @@ fn parse(tokens: &[String]) -> Result<Options, String> {
     Ok(options)
 }
 
+/// Whether this call is the one a terminal is sitting and waiting on: the
+/// session-start hook, and only that one. The mid-task hook shares its flags
+/// but returns in milliseconds by design, and a `-Spawned` copy has nobody
+/// waiting on it at all.
+fn waits_on_the_terminal(command: &str, options: &Options) -> bool {
+    command == "auto" && options.hook && !options.spawned && !options.midtask
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -312,6 +330,22 @@ mod tests {
     #[test]
     fn no_args_is_help() {
         assert_eq!(dispatch(&[]), 0);
+    }
+
+    #[test]
+    fn the_session_start_hook_is_the_one_the_terminal_waits_on() {
+        let hook = parse(&["-Hook".to_string()]).expect("parses");
+        assert!(waits_on_the_terminal("auto", &hook));
+    }
+
+    #[test]
+    fn the_hooks_nobody_waits_on_still_read_the_live_numbers() {
+        let midtask = parse(&["-Hook".to_string(), "-Midtask".to_string()]).expect("parses");
+        assert!(!waits_on_the_terminal("auto", &midtask));
+        let spawned = parse(&["-Hook".to_string(), "-Spawned".to_string()]).expect("parses");
+        assert!(!waits_on_the_terminal("auto", &spawned));
+        let by_hand = parse(&[]).expect("parses");
+        assert!(!waits_on_the_terminal("auto", &by_hand));
     }
 
     #[test]

@@ -265,7 +265,7 @@ fn reaper(tools: &Path) -> bool {
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null());
     crate::proc::detach(&mut command);
-    command.spawn().is_ok()
+    crate::proc::spawn_detached(&mut command).is_ok()
 }
 
 /// The other half of that: run from the copy, with nothing to do but wait for

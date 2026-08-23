@@ -125,7 +125,7 @@ pub fn ensure_running(wanted: &crate::provider::Wanted) {
         .stdout(Stdio::null())
         .stderr(Stdio::null());
     crate::proc::detach(&mut command);
-    let _ = command.spawn();
+    let _ = crate::proc::spawn_detached(&mut command);
 }
 
 /// Ask every running watcher to stop. Used before a new binary goes in: the old

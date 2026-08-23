@@ -31,9 +31,16 @@ own runtime first.
   that is not. It does nothing on its own: something has to call it, which is
   what `kebacc install -AutoSwitch` sets up.
 - **set** — per-pool settings, kept beside the accounts. `-Rank <n>` is the
-  order `auto` picks from, highest first; `-FiveHour <pct>` and `-SevenDay
+  order `auto` picks from, highest first; `-Reserve` holds an account out of
+  that order until every other one is capped; `-FiveHour <pct>` and `-SevenDay
   <pct>` are the caps for that pool alone, and outrank the environment
-  variables. `off` puts a cap back to the default.
+  variables. `off` puts a cap back to the default. `-OnSwitch <cmd>` runs a
+  command after each switch, with `KEBACC_POOL`, `KEBACC_CLI`, `KEBACC_FROM`
+  and `KEBACC_TO` in its environment.
+- **use** — sets a session directory up on one saved account and prints the
+  line that points a shell at it. A CLI started from that shell runs on that
+  account and nothing else moves, so several projects can hold several accounts
+  at once. The accounts themselves stay shared.
 - **remove** — forgets a saved login. The live session is untouched.
 - **watch** — the background check that covers a turn with no tool call in it.
   `watch status` says whether one is up, `watch stop` takes it down.
@@ -46,13 +53,14 @@ own runtime first.
   `-Check` only says whether one is out.
 
 `list`, `auto`, `status` and `doctor` with no flag mean every pool. `add`,
-`switch`, `remove` and `set` need one: `-claude`/`-cc`, `-codex`/`-cx`, `-antigravity`/`-ag`.
+`switch`, `remove`, `set` and `use` need one: `-claude`/`-cc`, `-codex`/`-cx`, `-antigravity`/`-ag`.
 
 ```
 kebacc list
 kebacc list -ag
 kebacc auto -claude
 kebacc switch -claude -Email you@example.com
+kebacc use -claude -Email other@example.com
 ```
 
 ## Staying up to date

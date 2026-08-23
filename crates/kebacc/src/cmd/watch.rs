@@ -19,7 +19,7 @@ const MAX_LIFE: Duration = Duration::from_secs(12 * 60 * 60);
 const POLL: Duration = Duration::from_secs(1);
 
 fn state(name: &str) -> PathBuf {
-    crate::provider::state_dir().join(name)
+    crate::provider::session_dir().join(name)
 }
 
 fn now_ms() -> u128 {

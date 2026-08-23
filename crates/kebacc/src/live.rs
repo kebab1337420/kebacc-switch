@@ -393,7 +393,7 @@ pub struct Activation {
 }
 
 fn active_file(provider: &Provider) -> PathBuf {
-    crate::provider::state_dir().join(format!("active-{}.json", provider.id.as_str()))
+    crate::provider::session_dir().join(format!("active-{}.json", provider.id.as_str()))
 }
 
 fn remember_active(provider: &Provider, email: &str, raw: &str) {
@@ -557,7 +557,7 @@ pub fn activate(provider: &Provider, entry: &crate::pool::Entry) -> Result<Activ
         remember_active(provider, &entry.email, &creds);
         crate::log::line(&format!("switch: {} is now the live login", entry.email));
         let _ = std::fs::write(
-            crate::provider::state_dir().join("switch.last"),
+            crate::provider::session_dir().join("switch.last"),
             format!(
                 "{} {} {}",
                 crate::usage::now_iso(),

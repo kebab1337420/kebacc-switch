@@ -302,6 +302,26 @@ pub fn claude_config_dir() -> PathBuf {
     .clone()
 }
 
+pub fn session_dir() -> PathBuf {
+    static DIR: OnceLock<PathBuf> = OnceLock::new();
+    DIR.get_or_init(|| {
+        let asked = match std::env::var_os("CLAUDE_CONFIG_DIR") {
+            Some(dir) if !dir.is_empty() => PathBuf::from(dir),
+            _ => return state_dir(),
+        };
+        if asked == home().join(".claude") {
+            return state_dir();
+        }
+        let dir = state_dir()
+            .join("sessions")
+            .join(crate::pool::short_hash(&asked.to_string_lossy()));
+        let _ = std::fs::create_dir_all(&dir);
+        reprotect_dir(&dir);
+        dir
+    })
+    .clone()
+}
+
 pub fn parse_pool_name(raw: &str) -> Option<PoolName> {
     let key = raw
         .trim()

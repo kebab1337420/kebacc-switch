@@ -47,6 +47,7 @@ fn usage_text() {
     println!("  arm         turn the auto-switch on or off, change nothing now");
     println!("  set         per-pool settings (-Rank <n>, -Reserve, -FiveHour <pct>, -SevenDay <pct>, -OnSwitch <cmd>)");
     println!("  doctor      check the install and the pools (-Fix repairs everything it can; -Protect, -Adopt, -Clean, -Renew one at a time, -Rollback to undo a switch)");
+    println!("  use         set a session directory up on one account, for a terminal of its own");
     println!("  watch       the background switcher: 'watch status', 'watch stop'");
     println!("  statusline  the Claude Code status line, from a payload on stdin");
     println!("  update      install the newest release (-Check to only say whether one is out)");
@@ -62,9 +63,10 @@ fn usage_text() {
     println!("  kebacc set -cc -Rank 10 -Email you@example.com");
     println!("  kebacc set -cc -FiveHour 90");
     println!("  kebacc set -cc -Reserve -Email spare@example.com");
+    println!("  kebacc use -cc -Email other@example.com");
     println!();
     println!("  list, auto, doctor, arm: no flag means every pool");
-    println!("  add, switch, remove: name one pool");
+    println!("  add, switch, remove, set, use: name one pool");
     println!("  arm -claude -Merge    add Claude to whatever is already armed");
     println!("  arm -ag -Drop         take Antigravity out, leave the rest");
     println!();
@@ -110,6 +112,7 @@ fn dispatch(args: &[String]) -> i32 {
             | "reap"
             | "set"
             | "status"
+            | "use"
     ) {
         say(&format!("Unknown command '{command}'."), Color::Red);
         usage_text();
@@ -215,7 +218,7 @@ fn dispatch(args: &[String]) -> i32 {
         return cmd::midtask::run(&options.wanted);
     }
 
-    if matches!(command, "add" | "switch" | "remove" | "set") {
+    if matches!(command, "add" | "switch" | "remove" | "set" | "use") {
         let Some(id) = options.wanted.exactly_one() else {
             say("Name a pool: -claude, -codex or -ag.", Color::Red);
             return 64;
@@ -253,6 +256,7 @@ fn run(command: &str, id: ProviderId, options: &Options) -> i32 {
         "switch" => cmd::switch::run(&provider, options),
         "remove" => cmd::remove::run(&provider, options),
         "set" => cmd::set::run(&provider, options),
+        "use" => cmd::use_dir::run(&provider, options),
         "auto" => cmd::auto::run(&provider, options),
         "refresh" => cmd::refresh::run(&provider, options),
         _ => cmd::doctor::run(&provider, options),
@@ -333,6 +337,7 @@ fn parse(tokens: &[String]) -> Result<Options, String> {
             "statusline" => options.statusline = Some(true),
             "nostatusline" => options.statusline = Some(false),
             "toolsdir" => options.tools_dir = Some(value().ok_or("-ToolsDir needs a directory.")?),
+            "dir" => options.dir = Some(value().ok_or("-Dir needs a directory.")?),
             "binary" => options.binary = Some(value().ok_or("-Binary needs a path.")?),
             "autoswitch" => options.auto_switch = true,
             "noprofileedit" => options.no_profile_edit = true,

@@ -85,6 +85,13 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
     i32::from(broken)
 }
 
+fn pace(entry: &Entry) -> Option<usage::Pace> {
+    usage::caps()
+        .iter()
+        .filter_map(|(name, cap)| usage::pace(&entry.snapshot, name, *cap))
+        .min_by_key(|pace| pace.full_at)
+}
+
 fn readings(provider: &Provider, opts: &Options, pool: &[Entry]) -> Vec<Option<usage::Usage>> {
     if opts.refresh {
         let all: Vec<&Entry> = pool.iter().collect();
@@ -120,6 +127,8 @@ fn as_json(provider: &Provider, opts: &Options, pool: &[Entry]) -> i32 {
                     .map(|at| at.to_rfc3339()),
                 "checkedSecondsAgo": usage::cache_age(entry.cache.as_ref())
                     .map(|age| age.num_seconds()),
+                "perHour": pace(entry).map(|pace| pace.per_hour),
+                "cappedAt": pace(entry).map(|pace| pace.full_at.to_rfc3339()),
             })
         })
         .collect();

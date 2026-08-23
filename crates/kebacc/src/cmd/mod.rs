@@ -14,6 +14,7 @@ pub mod statusline;
 pub mod switch;
 pub mod uninstall;
 pub mod update;
+pub mod use_dir;
 pub mod watch;
 pub mod wire;
 
@@ -53,6 +54,7 @@ pub struct Options {
     pub rank: Option<i64>,
     pub reserve: Option<bool>,
     pub on_switch: Option<String>,
+    pub dir: Option<String>,
     pub five_hour: Option<f64>,
     pub seven_day: Option<f64>,
 }

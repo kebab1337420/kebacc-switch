@@ -75,7 +75,7 @@ fn is_switcher(command: &str) -> bool {
 }
 
 fn stamp_file() -> PathBuf {
-    crate::provider::state_dir().join("midtask.stamp")
+    crate::provider::session_dir().join("midtask.stamp")
 }
 
 fn now_ms() -> u128 {

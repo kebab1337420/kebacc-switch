@@ -40,6 +40,10 @@ pub const COMMANDS: &[(&str, &str)] = &[
         "kebacc-update.md",
         include_str!("../../../../plugins/kebacc/src/commands/kebacc-update.md"),
     ),
+    (
+        "kebacc-use.md",
+        include_str!("../../../../plugins/kebacc/src/commands/kebacc-use.md"),
+    ),
 ];
 
 pub const LEGACY: &[&str] = &[

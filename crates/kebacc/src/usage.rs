@@ -386,6 +386,85 @@ pub fn cache_seconds(cache: Option<&Value>) -> i64 {
     }
 }
 
+const TRAIL_POINTS: usize = 24;
+const TRAIL_GAP_SECONDS: i64 = 60;
+const PACE_FLOOR: f64 = 0.5;
+const PACE_SPAN_SECONDS: i64 = 300;
+
+pub struct Pace {
+    pub per_hour: f64,
+    pub full_at: DateTime<Utc>,
+}
+
+fn trail(snapshot: &Value) -> Vec<(DateTime<Utc>, Value)> {
+    snapshot
+        .get("usageTrail")
+        .and_then(Value::as_array)
+        .map(|points| {
+            points
+                .iter()
+                .filter_map(|point| {
+                    let at = parse_time(&jsonio::str_of(point, "at")?)?;
+                    Some((at, point.clone()))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+fn extended_trail(snapshot: &Value, usage: &Usage) -> Option<Vec<Value>> {
+    let mut points = trail(snapshot);
+    let now = Utc::now();
+    if points
+        .last()
+        .is_some_and(|(at, _)| (now - *at).num_seconds() < TRAIL_GAP_SECONDS)
+    {
+        return None;
+    }
+    let mut point = serde_json::Map::new();
+    point.insert("at".into(), json!(now_iso()));
+    for (name, window) in [
+        ("five_hour", &usage.five_hour),
+        ("seven_day", &usage.seven_day),
+    ] {
+        if let Some(window) = window {
+            point.insert(name.into(), json!(window.utilization));
+        }
+    }
+    points.push((now, Value::Object(point)));
+    let start = points.len().saturating_sub(TRAIL_POINTS);
+    Some(points[start..].iter().map(|(_, p)| p.clone()).collect())
+}
+
+pub fn pace(snapshot: &Value, name: &str, cap: f64) -> Option<Pace> {
+    let points: Vec<(DateTime<Utc>, f64)> = trail(snapshot)
+        .into_iter()
+        .filter_map(|(at, point)| Some((at, point.get(name)?.as_f64()?)))
+        .collect();
+    let (last_at, last) = *points.last()?;
+    let mut first = points.len() - 1;
+    while first > 0 && points[first - 1].1 <= points[first].1 {
+        first -= 1;
+    }
+    let (first_at, start) = points[first];
+    let span = (last_at - first_at).num_seconds();
+    if span < PACE_SPAN_SECONDS {
+        return None;
+    }
+    let per_hour = (last - start) / (span as f64 / 3600.0);
+    if per_hour < PACE_FLOOR {
+        return None;
+    }
+    let left = (cap - last).max(0.0);
+    let minutes = (left / per_hour * 60.0)
+        .round()
+        .clamp(0.0, 60.0 * 24.0 * 30.0);
+    Some(Pace {
+        per_hour,
+        full_at: Utc::now() + chrono::Duration::minutes(minutes as i64),
+    })
+}
+
 pub fn save_cache(file: &Path, usage: &Usage) {
     let _ = lock::locked(lock::USAGE_CACHE, || {
         let Some(mut snapshot) = jsonio::read(file) else {
@@ -404,7 +483,12 @@ pub fn save_cache(file: &Path, usage: &Usage) {
                 );
             }
         }
-        jsonio::map_mut(&mut snapshot).insert("usageCache".into(), Value::Object(cache));
+        let trail = extended_trail(&snapshot, usage);
+        let map = jsonio::map_mut(&mut snapshot);
+        map.insert("usageCache".into(), Value::Object(cache));
+        if let Some(trail) = trail {
+            map.insert("usageTrail".into(), Value::Array(trail));
+        }
         let _ = jsonio::write(file, &snapshot);
     });
 }

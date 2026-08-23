@@ -213,7 +213,7 @@ fn take(
 }
 
 pub fn note_file() -> std::path::PathBuf {
-    crate::provider::state_dir().join("switched.note")
+    crate::provider::session_dir().join("switched.note")
 }
 
 fn leave_note(text: &str) {

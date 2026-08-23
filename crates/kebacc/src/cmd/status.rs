@@ -32,6 +32,13 @@ pub fn run(wanted: &Wanted, opts: &Options) -> i32 {
                 if let Some(ready) = usage.as_ref().and_then(usage::Usage::ready_at) {
                     text.push_str(&format!("  back in {}", usage::wait_text(ready)));
                 }
+                if let Some(pace) = soonest_pace(&entry.snapshot) {
+                    text.push_str(&format!(
+                        "  {:.0}%/h, capped in {}",
+                        pace.per_hour,
+                        usage::wait_text(pace.full_at)
+                    ));
+                }
                 text
             }
             None if entries.is_empty() => {
@@ -75,8 +82,15 @@ pub fn run(wanted: &Wanted, opts: &Options) -> i32 {
     0
 }
 
+fn soonest_pace(snapshot: &serde_json::Value) -> Option<usage::Pace> {
+    usage::caps()
+        .iter()
+        .filter_map(|(name, cap)| usage::pace(snapshot, name, *cap))
+        .min_by_key(|pace| pace.full_at)
+}
+
 fn last_switch() -> Option<String> {
-    let text = std::fs::read_to_string(provider::state_dir().join("switch.last")).ok()?;
+    let text = std::fs::read_to_string(provider::session_dir().join("switch.last")).ok()?;
     let mut words = text.split_whitespace();
     let at = usage::parse_time(words.next()?)?;
     let rest: Vec<&str> = words.collect();

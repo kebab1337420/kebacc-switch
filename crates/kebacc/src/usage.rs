@@ -1,7 +1,8 @@
+use crate::branch::{Quota, Token};
 use crate::jsonio;
 use crate::lock;
 use crate::pool::Entry;
-use crate::provider::{Provider, ProviderId};
+use crate::provider::Provider;
 use chrono::{DateTime, Utc};
 use serde_json::{json, Value};
 use std::path::Path;
@@ -213,21 +214,22 @@ pub fn window_now(value: Option<&Value>) -> Option<Window> {
 }
 
 pub fn access_token(provider: &Provider, creds_raw: Option<&str>) -> Option<String> {
-    match provider.id {
-        ProviderId::Claude => {
+    match provider.id.branch().token {
+        Token::Antigravity => antigravity_access_token(creds_raw),
+        Token::Paths(paths) => {
             let creds: Value = serde_json::from_str(creds_raw?).ok()?;
-            let oauth = creds.get("claudeAiOauth").filter(|v| !v.is_null())?;
-            jsonio::str_of(oauth, "accessToken")
+            paths.iter().find_map(|path| token_at(&creds, path))
         }
-        ProviderId::Codex => {
-            let creds: Value = serde_json::from_str(creds_raw?).ok()?;
-            if let Some(tokens) = creds.get("tokens").filter(|v| !v.is_null()) {
-                return jsonio::str_of(tokens, "access_token");
-            }
-            jsonio::str_of(&creds, "OPENAI_API_KEY")
-        }
-        ProviderId::Antigravity => antigravity_access_token(creds_raw),
     }
+}
+
+fn token_at(creds: &Value, path: &[&str]) -> Option<String> {
+    let (last, parents) = path.split_last()?;
+    let mut here = creds;
+    for step in parents {
+        here = here.get(step).filter(|value| !value.is_null())?;
+    }
+    jsonio::str_of(here, last)
 }
 
 pub fn agent() -> ureq::Agent {
@@ -274,43 +276,39 @@ fn get_json(url: &str, headers: &[(&str, &str)]) -> Option<Value> {
 }
 
 pub fn fetch(provider: &Provider, token: Option<&str>) -> Option<Usage> {
-    match provider.id {
-        ProviderId::Claude => fetch_claude(token),
-        ProviderId::Codex => fetch_codex(token),
-        ProviderId::Antigravity => fetch_antigravity(token),
+    match provider.id.branch().quota {
+        Quota::Antigravity => fetch_antigravity(token),
+        Quota::Get {
+            url,
+            headers,
+            root,
+            five_hour,
+            seven_day,
+            not_for_prefix,
+        } => {
+            let token = token?;
+            if not_for_prefix.is_some_and(|prefix| token.starts_with(prefix)) {
+                return None;
+            }
+            let mut sent: Vec<(&str, String)> = vec![("Authorization", format!("Bearer {token}"))];
+            for (name, value) in headers {
+                sent.push((name, (*value).to_string()));
+            }
+            let sent: Vec<(&str, &str)> = sent
+                .iter()
+                .map(|(name, value)| (*name, value.as_str()))
+                .collect();
+            let raw = get_json(url, &sent)?;
+            let mut here = &raw;
+            for step in root {
+                here = here.get(step).filter(|value| !value.is_null())?;
+            }
+            Some(Usage {
+                five_hour: window_from(here.get(five_hour)),
+                seven_day: window_from(here.get(seven_day)),
+            })
+        }
     }
-}
-
-fn fetch_claude(token: Option<&str>) -> Option<Usage> {
-    let token = token?;
-    let raw = get_json(
-        "https://api.anthropic.com/api/oauth/usage",
-        &[
-            ("Authorization", &format!("Bearer {token}")),
-            ("anthropic-version", "2023-06-01"),
-            ("anthropic-beta", "oauth-2025-04-20"),
-        ],
-    )?;
-    Some(Usage {
-        five_hour: window_from(raw.get("five_hour")),
-        seven_day: window_from(raw.get("seven_day")),
-    })
-}
-
-fn fetch_codex(token: Option<&str>) -> Option<Usage> {
-    let token = token?;
-    if token.starts_with("sk-") {
-        return None;
-    }
-    let raw = get_json(
-        "https://chatgpt.com/backend-api/codex/usage",
-        &[("Authorization", &format!("Bearer {token}"))],
-    )?;
-    let limits = raw.get("rate_limits").filter(|v| !v.is_null())?;
-    Some(Usage {
-        five_hour: window_from(limits.get("primary")),
-        seven_day: window_from(limits.get("secondary")),
-    })
 }
 
 pub fn from_cache(cache: Option<&Value>) -> Option<Usage> {

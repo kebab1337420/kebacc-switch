@@ -1,3 +1,4 @@
+use crate::branch::Identity;
 use crate::jsonio;
 use crate::lock;
 use crate::provider::Provider;
@@ -60,7 +61,7 @@ fn read_creds_raw(provider: &Provider) -> Option<String> {
             return Some(text);
         }
     }
-    if provider.id == ProviderId::Antigravity {
+    if provider.id.branch().uses_keyring {
         return crate::keyring::read();
     }
     None
@@ -95,7 +96,7 @@ pub fn set_creds_raw(provider: &Provider, raw: &str) -> std::io::Result<()> {
             );
         }
     }
-    if provider.id == ProviderId::Antigravity {
+    if provider.id.branch().uses_keyring {
         if let Err(problem) = crate::keyring::write(raw) {
             crate::usage::debug(&format!("credential store not written: {problem}"));
         }
@@ -117,17 +118,17 @@ pub fn identity(provider: &Provider) -> Option<Value> {
 }
 
 fn read_identity(provider: &Provider) -> Option<Value> {
-    match provider.id {
-        ProviderId::Claude => {
+    match provider.id.branch().identity {
+        Identity::ConfigMember(member) => {
             let config = jsonio::read(&provider.config_file())?;
-            jsonio::obj(&config, "oauthAccount")
+            jsonio::obj(&config, member)
         }
-        ProviderId::Codex => {
+        Identity::Codex => {
             let raw = creds_raw(provider)?;
             let creds: Value = serde_json::from_str(&raw).ok()?;
             codex_identity(&creds)
         }
-        ProviderId::Antigravity => {
+        Identity::Antigravity => {
             let raw = creds_raw(provider)?;
             let creds: Value = serde_json::from_str(&raw).ok()?;
             antigravity_identity(&creds)
@@ -196,10 +197,13 @@ fn email_from_pool(refresh: &str) -> Option<String> {
 }
 
 pub fn set_identity(provider: &Provider, identity: &Value) {
+    let Identity::ConfigMember(member) = provider.id.branch().identity else {
+        return;
+    };
     forget(provider);
     let path = provider.config_file();
     if !path.exists() {
-        let _ = jsonio::write(&path, &json!({ "oauthAccount": identity }));
+        let _ = jsonio::write(&path, &json!({ member: identity }));
         return;
     }
     let Ok(text) = std::fs::read_to_string(&path) else {
@@ -207,7 +211,7 @@ pub fn set_identity(provider: &Provider, identity: &Value) {
     };
     let block = serde_json::to_string(identity).unwrap_or_else(|_| "{}".into());
 
-    let updated = match find_member(&text, "oauthAccount") {
+    let updated = match find_member(&text, member) {
         Some((start, end)) => {
             let mut out = String::with_capacity(text.len() + block.len());
             out.push_str(&text[..start]);
@@ -221,7 +225,9 @@ pub fn set_identity(provider: &Provider, identity: &Value) {
             let comma = if rest.starts_with('}') { "" } else { "," };
             let mut out = String::with_capacity(text.len() + block.len() + 20);
             out.push_str(&text[..=open]);
-            out.push_str("\"oauthAccount\":");
+            out.push('"');
+            out.push_str(member);
+            out.push_str("\":");
             out.push_str(&block);
             out.push_str(comma);
             out.push_str(&text[open + 1..]);
@@ -548,10 +554,8 @@ pub fn activate(provider: &Provider, entry: &crate::pool::Entry) -> Result<Activ
 
         set_creds_raw(provider, &creds)
             .map_err(|e| format!("Could not write the credentials: {e}"))?;
-        if provider.id == ProviderId::Claude {
-            if let Some(identity) = entry.identity.as_ref() {
-                set_identity(provider, identity);
-            }
+        if let Some(identity) = entry.identity.as_ref() {
+            set_identity(provider, identity);
         }
         let leaving = active_email(provider);
         remember_active(provider, &entry.email, &creds);

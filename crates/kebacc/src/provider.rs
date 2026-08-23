@@ -1,9 +1,9 @@
 use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
+use crate::branch::{self, ConfigAt};
+
 const PROTECTED_MARK: &str = ".protected";
-const AGY_SESSION_DIR: [&str; 2] = [".gemini", "antigravity-cli"];
-const AGY_TOKEN_FILE: &str = "antigravity-oauth-token";
 
 #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub enum ProviderId {
@@ -19,21 +19,32 @@ impl ProviderId {
         ProviderId::Antigravity,
     ];
 
-    pub fn as_str(self) -> &'static str {
+    pub fn index(self) -> usize {
         match self {
-            ProviderId::Claude => "claude",
-            ProviderId::Codex => "codex",
-            ProviderId::Antigravity => "antigravity",
+            ProviderId::Claude => 0,
+            ProviderId::Codex => 1,
+            ProviderId::Antigravity => 2,
         }
     }
 
+    pub fn at(index: usize) -> Option<ProviderId> {
+        Self::ALL.get(index).copied()
+    }
+
+    pub fn branch(self) -> &'static branch::Branch {
+        branch::of(self)
+    }
+
+    pub fn as_str(self) -> &'static str {
+        self.branch().key
+    }
+
     pub fn seal_account(self) -> &'static str {
-        match self {
-            ProviderId::Antigravity => "kebacc-antigravity",
-            ProviderId::Claude | ProviderId::Codex => "kebacc-switch",
-        }
+        self.branch().seal_account
     }
 }
+
+const _: () = assert!(ProviderId::ALL.len() == branch::BRANCHES.len());
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct Wanted {
@@ -205,11 +216,7 @@ impl Wanted {
     }
 
     pub fn flag_of(id: ProviderId) -> &'static str {
-        match id {
-            ProviderId::Claude => "-claude",
-            ProviderId::Codex => "-codex",
-            ProviderId::Antigravity => "-ag",
-        }
+        id.branch().flag
     }
 
     pub fn flags(&self) -> Vec<String> {
@@ -243,10 +250,7 @@ impl Wanted {
         }
         self.ids
             .iter()
-            .map(|id| match id {
-                ProviderId::Antigravity => "ag",
-                other => other.as_str(),
-            })
+            .map(|id| id.branch().flag.trim_start_matches('-'))
             .collect::<Vec<_>>()
             .join("+")
     }
@@ -334,14 +338,9 @@ pub fn parse_pool_name(raw: &str) -> Option<PoolName> {
     match key.as_str() {
         "all" | "every" => Some(PoolName::All),
         "off" | "none" | "no" => Some(PoolName::Off),
-        "claude" | "claudecode" | "cl" | "cc" | "anthropic" => {
-            Some(PoolName::One(ProviderId::Claude))
-        }
-        "codex" | "cx" | "openai" | "chatgpt" | "gpt" => Some(PoolName::One(ProviderId::Codex)),
-        "antigravity" | "ag" | "agy" | "google" | "gemini" => {
-            Some(PoolName::One(ProviderId::Antigravity))
-        }
-        _ => None,
+        other => branch::find(other)
+            .and_then(ProviderId::at)
+            .map(PoolName::One),
     }
 }
 
@@ -358,66 +357,41 @@ pub fn newest(paths: &[PathBuf]) -> Option<PathBuf> {
 }
 
 pub fn spec(id: ProviderId) -> Provider {
-    match id {
-        ProviderId::Claude => {
-            let dir = claude_config_dir();
-            Provider {
-                id,
-                label: "Claude Code",
-                cli: "claude",
-                store: store_dir("KEBACC_SWITCH_ACCOUNTS", ".kebacc-switch-accounts"),
-                cred_candidates: vec![dir.join(".credentials.json")],
-                config_candidates: vec![home().join(".claude.json"), dir.join(".claude.json")],
-                cred_label: "~/.claude/.credentials.json",
-                uses_keychain: cfg!(target_os = "macos"),
-                keychain_service: Some("Claude Code-credentials"),
+    let branch = branch::of(id);
+    let dir = branch_home(branch);
+    let config_candidates = branch
+        .config_files
+        .iter()
+        .map(|at| match at {
+            ConfigAt::Home(name) => home().join(name),
+            ConfigAt::Dir(name) => dir.join(name),
+        })
+        .collect();
+    Provider {
+        id,
+        label: branch.label,
+        cli: branch.cli,
+        store: store_dir(branch.store_env, branch.store_default),
+        cred_candidates: vec![dir.join(branch.cred_file)],
+        config_candidates,
+        cred_label: branch.cred_label,
+        uses_keychain: branch.keychain_on_macos && cfg!(target_os = "macos"),
+        keychain_service: branch.keychain_service,
+    }
+}
+
+fn branch_home(branch: &branch::Branch) -> PathBuf {
+    if branch.home_env == "CLAUDE_CONFIG_DIR" {
+        return claude_config_dir();
+    }
+    match std::env::var_os(branch.home_env) {
+        Some(dir) if !dir.is_empty() => PathBuf::from(dir),
+        _ => {
+            let mut dir = home();
+            for part in branch.home_default {
+                dir.push(part);
             }
-        }
-        ProviderId::Codex => {
-            let dir = match std::env::var_os("CODEX_HOME") {
-                Some(d) if !d.is_empty() => PathBuf::from(d),
-                _ => home().join(".codex"),
-            };
-            Provider {
-                id,
-                label: "Codex",
-                cli: "codex",
-                store: store_dir(
-                    "KEBACC_SWITCH_CODEX_ACCOUNTS",
-                    ".kebacc-switch-codex-accounts",
-                ),
-                cred_candidates: vec![dir.join("auth.json")],
-                config_candidates: Vec::new(),
-                cred_label: "~/.codex/auth.json",
-                uses_keychain: false,
-                keychain_service: None,
-            }
-        }
-        ProviderId::Antigravity => {
-            let dir = match std::env::var_os("ANTIGRAVITY_HOME") {
-                Some(d) if !d.is_empty() => PathBuf::from(d),
-                _ => {
-                    let mut dir = home();
-                    for part in AGY_SESSION_DIR {
-                        dir.push(part);
-                    }
-                    dir
-                }
-            };
-            Provider {
-                id,
-                label: "Antigravity",
-                cli: "agy",
-                store: store_dir(
-                    "KEBACC_SWITCH_ANTIGRAVITY_ACCOUNTS",
-                    ".kebacc-switch-antigravity-accounts",
-                ),
-                cred_candidates: vec![dir.join(AGY_TOKEN_FILE)],
-                config_candidates: Vec::new(),
-                cred_label: "~/.gemini/antigravity-cli/antigravity-oauth-token",
-                uses_keychain: false,
-                keychain_service: None,
-            }
+            dir
         }
     }
 }
@@ -602,5 +576,20 @@ mod tests {
         wanted.add(ProviderId::Antigravity);
         assert!(wanted.is_all());
         assert!(wanted.flags().is_empty());
+    }
+
+    #[test]
+    fn every_branch_answers_to_its_own_name() {
+        for id in ProviderId::ALL {
+            let branch = id.branch();
+            assert_eq!(branch.key, id.as_str());
+            assert_eq!(ProviderId::at(id.index()), Some(id));
+            for name in std::iter::once(&branch.key).chain(branch.aliases) {
+                match parse_pool_name(name) {
+                    Some(PoolName::One(found)) => assert_eq!(found, id, "{name}"),
+                    _ => panic!("{name} names no pool"),
+                }
+            }
+        }
     }
 }

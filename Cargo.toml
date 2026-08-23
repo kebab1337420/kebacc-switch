@@ -7,9 +7,11 @@ resolver = "2"
 
 # The switcher is a short-lived command whose cost is process startup, not
 # throughput: optimising it for size instead of speed takes ~250 KB off the
-# binary and leaves the status line at the same 15 ms.
+# binary and leaves the status line at the same 15 ms. Aborting on panic takes
+# another ~370 KB, and nothing here catches an unwind.
 [profile.release]
 opt-level = "z"
 lto = "fat"
 codegen-units = 1
 strip = true
+panic = "abort"

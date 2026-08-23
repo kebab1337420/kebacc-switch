@@ -66,8 +66,6 @@ fn write_private(path: &Path, text: &str) -> std::io::Result<()> {
     write_private_bytes(path, text.as_bytes())
 }
 
-/// Create `path` and write `bytes` into it. On Unix the file is `0o600` from
-/// the first byte, so a secret is never world-readable between create and chmod.
 pub fn write_private_bytes(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
     use std::io::Write;
 

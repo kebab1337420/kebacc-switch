@@ -64,7 +64,11 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
     10
 }
 
-fn pick<'a>(pool: &'a [Entry], current: Option<&Entry>, wanted: Option<&str>) -> Option<&'a Entry> {
+pub fn pick<'a>(
+    pool: &'a [Entry],
+    current: Option<&Entry>,
+    wanted: Option<&str>,
+) -> Option<&'a Entry> {
     if let Some(wanted) = wanted.filter(|w| !w.is_empty()) {
         let key = wanted.to_lowercase();
         if let Some(hit) = pool.iter().find(|e| e.email.to_lowercase() == key) {

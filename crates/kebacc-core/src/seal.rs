@@ -7,12 +7,6 @@ pub const PREFIX: &str = "ccx1:";
 
 static SECRET_ACCOUNT: Mutex<Option<&'static str>> = Mutex::new(None);
 
-/// The keychain / libsecret account the AES wrapping key is stored under.
-///
-/// An existing install can only open its saved logins if this is the same
-/// string that wrote them. Claude and Codex share `kebacc-switch`; Antigravity
-/// uses `kebacc-antigravity`. One process lists every pool, so this can move
-/// between commands.
 pub fn set_secret_account(name: &'static str) {
     if let Ok(mut slot) = SECRET_ACCOUNT.lock() {
         *slot = Some(name);
@@ -23,12 +17,6 @@ pub fn secret_account() -> Option<&'static str> {
     SECRET_ACCOUNT.lock().ok().and_then(|slot| *slot)
 }
 
-/// Deadline for `security` and `secret-tool`. Either can wait forever for a
-/// prompt that nobody will answer: a Linux box over SSH with no D-Bus session,
-/// or a locked keyring. This path runs from a session-start hook and a status
-/// line that redraws several times a minute, so three seconds is long enough
-/// for a local lookup and short enough that a hung probe does not freeze the
-/// terminal.
 const KEYRING_PROBE_DEADLINE: Duration = Duration::from_secs(3);
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -161,7 +149,6 @@ fn secret_key(create: bool) -> Option<Vec<u8>> {
     }
 }
 
-/// Write a secret to a helper that reads it from stdin (`security`, `secret-tool`).
 pub fn secret_via_stdin(tool: &str, args: &[&str], text: &str) -> bool {
     let owned: Vec<String> = args.iter().map(|arg| (*arg).to_string()).collect();
     write_stdin(tool, &owned, text)
@@ -186,9 +173,6 @@ fn write_stdin(tool: &str, args: &[String], text: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Piped stdout, then read after wait. `.output()` cannot be timed out. The
-/// payload is a 32-byte key in base64, so the pipe cannot fill before the
-/// child exits.
 fn timed_stdout(tool: &str, args: &[String]) -> Option<Vec<u8>> {
     use std::io::Read;
 

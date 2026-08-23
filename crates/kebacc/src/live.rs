@@ -387,16 +387,11 @@ pub fn newest_backup(provider: &Provider) -> Option<Backup> {
     Some(Backup { raw, at })
 }
 
-/// What a switch did, beyond succeeding. The warning is what the caller says
-/// out loud: the pair went over as it was, and the CLI may ask for a login.
 pub struct Activation {
     pub renewed: bool,
     pub warning: Option<String>,
 }
 
-/// Where the account this machine last switched to is written down, so that a
-/// pair the CLI rotates afterwards can be filed under the login it belongs to
-/// rather than under whichever login `~/.claude.json` happens to name.
 fn active_file(provider: &Provider) -> PathBuf {
     crate::provider::state_dir().join(format!("active-{}.json", provider.id.as_str()))
 }
@@ -414,14 +409,6 @@ fn active_email(provider: &Provider) -> Option<String> {
     jsonio::str_of(&jsonio::read(&active_file(provider))?, "email")
 }
 
-/// The pair the CLI is using right now, saved back into the pool before it is
-/// overwritten.
-///
-/// Claude Code renews its own token as it works, and the renewal retires the
-/// pair the pool holds. Switching away without saving what the CLI ended up
-/// with is therefore what makes the account unusable next time round: the
-/// snapshot keeps a pair the server has already forgotten. This runs on the
-/// way out of every switch.
 pub fn capture(provider: &Provider, pool: &[crate::pool::Entry]) {
     let Some(raw) = creds_raw(provider) else {
         return;
@@ -464,6 +451,44 @@ pub fn capture(provider: &Provider, pool: &[crate::pool::Entry]) {
         "capture: {owner} pair {print} expiring {} {}",
         crate::log::moment(crate::oauth::expires_at(&raw)),
         if saved { "saved" } else { "COULD NOT BE SAVED" }
+    ));
+}
+
+fn announce_switch(provider: &Provider, from: Option<&str>, to: &str) {
+    let asked = match std::env::var("KEBACC_SWITCH_ON_SWITCH") {
+        Ok(text) if !text.trim().is_empty() => Some(text),
+        Ok(_) => None,
+        Err(_) => crate::pool::Pool::new(provider).on_switch(),
+    };
+    let Some(asked) = asked else {
+        return;
+    };
+    let mut command = if cfg!(windows) {
+        let mut command = std::process::Command::new("cmd");
+        command.args(["/c", &asked]);
+        command
+    } else {
+        let mut command = std::process::Command::new("sh");
+        command.args(["-c", &asked]);
+        command
+    };
+    command
+        .env("KEBACC_POOL", provider.label)
+        .env("KEBACC_CLI", provider.cli)
+        .env("KEBACC_TO", to)
+        .env("KEBACC_FROM", from.unwrap_or_default())
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null());
+    crate::proc::detach(&mut command);
+    let started = crate::proc::spawn_detached(&mut command).is_ok();
+    crate::log::line(&format!(
+        "switch: on-switch command {}",
+        if started {
+            "started"
+        } else {
+            "COULD NOT START"
+        }
     ));
 }
 
@@ -528,8 +553,19 @@ pub fn activate(provider: &Provider, entry: &crate::pool::Entry) -> Result<Activ
                 set_identity(provider, identity);
             }
         }
+        let leaving = active_email(provider);
         remember_active(provider, &entry.email, &creds);
         crate::log::line(&format!("switch: {} is now the live login", entry.email));
+        let _ = std::fs::write(
+            crate::provider::state_dir().join("switch.last"),
+            format!(
+                "{} {} {}",
+                crate::usage::now_iso(),
+                provider.label,
+                entry.email
+            ),
+        );
+        announce_switch(provider, leaving.as_deref(), &entry.email);
         Ok(Activation { renewed, warning })
     })?
 }

@@ -102,15 +102,9 @@ fn keep_a_copy(path: &Path) {
     let _ = std::fs::copy(path, path.with_extension("json.cc-backup.prev"));
 }
 
-/// There is one status line in settings.json and every tool that wants it wants
-/// the same slot, so taking it means putting back whatever was there once this
-/// half leaves. This is what the caller has to do with the copy it keeps.
 enum Stash {
-    /// Leave the copy on disk as it is.
     Nothing,
-    /// Save this status line: ours displaced it.
     Keep(Value),
-    /// Ours is gone, the copy has been put back, and it is no longer needed.
     Drop,
 }
 
@@ -123,8 +117,6 @@ fn is_ours(line: Option<&Value>) -> bool {
 fn set_statusline(settings: &mut Value, on: bool, command: &str, kept: Option<Value>) -> Stash {
     let map = jsonio::map_mut(settings);
     if on {
-        // Ours already there: whatever it displaced the first time is still the
-        // one to put back, so the copy stays as it is.
         let displaced = match map.get("statusLine") {
             Some(line) if !is_ours(Some(line)) => Stash::Keep(line.clone()),
             _ => Stash::Nothing,
@@ -136,8 +128,6 @@ fn set_statusline(settings: &mut Value, on: bool, command: &str, kept: Option<Va
         return displaced;
     }
     if !is_ours(map.get("statusLine")) {
-        // Someone else holds the slot now. Theirs stays, and so does the copy:
-        // it is not ours to put back over a line we never took.
         return Stash::Nothing;
     }
     match kept {

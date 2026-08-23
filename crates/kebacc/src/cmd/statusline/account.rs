@@ -160,9 +160,6 @@ pub fn current_email() -> Option<String> {
 
 const LIVE_CACHE_SECONDS: i64 = 60;
 
-/// The live session already knows the current account's quota. Write it into
-/// that account's snapshot so the other sessions, and the next draw, see it
-/// without asking the API.
 pub fn remember_live(payload: &Value) {
     let Some(limits) = payload.get("rate_limits").filter(|v| !v.is_null()) else {
         return;
@@ -194,7 +191,6 @@ pub fn remember_live(payload: &Value) {
     }
 }
 
-/// `resets_at` comes as epoch seconds in some payloads, as a date in others.
 fn window_of(limits: &Value, name: &str) -> Option<usage::Window> {
     let window = limits.get(name).filter(|v| !v.is_null())?;
     let mut window = window.clone();

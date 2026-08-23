@@ -1,22 +1,10 @@
-//! Taking back what the install put down, which used to be `uninstall.ps1` and
-//! `uninstall.sh`.
-//!
-//! The saved logins are left alone: they are the expensive thing to rebuild, a
-//! reinstall finds them again, and removing a plugin is not a reason to lose
-//! them. `-Pool` is how somebody says otherwise. So is anything in the tools
-//! directory this plugin did not write, kebacc-codex included: every file is
-//! named, and the directory itself only goes when nothing else is left in it.
-
 use super::Options;
 use crate::term::{ask, said_yes, say, Color};
 use std::path::Path;
 use std::time::Duration;
 
-/// How long to wait for a watcher to notice it has been asked to stop. It looks
-/// once a second, so this is generous.
 const WATCHER_WAIT: Duration = Duration::from_secs(5);
 
-/// How long the copy left behind waits for the name of the binary to come free.
 const REAP_WAIT: Duration = Duration::from_secs(60);
 
 pub fn run(opts: &Options) -> i32 {
@@ -27,17 +15,8 @@ pub fn run(opts: &Options) -> i32 {
         return 0;
     }
 
-    // The settings name a binary by path, and `wire` and `arm` recognise their
-    // own work by the name in it rather than by where it lives. Uninstalling a
-    // copy in a directory of its own would therefore unwire whatever install
-    // the settings actually point at — usually the working one.
     let ours = settings_point_here(&tools);
     if ours {
-        // Disarmed and unwired before the binary goes, or the hooks and the
-        // status line are left pointing at a file that is no longer there — and
-        // a hook left behind is worse than a stale setting: it fails at the
-        // start of every session the user opens from here on.
-        //
         super::arm::run(&crate::provider::Wanted::off(), true, super::arm::Mode::Set);
         super::wire::run(Some(false), None, true);
         super::wire::run(None, Some(true), true);
@@ -48,11 +27,6 @@ pub fn run(opts: &Options) -> i32 {
         );
     }
 
-    // The watcher outlives the session that started it and answers to no hook,
-    // so nothing above stops it. Left alone it would go on switching accounts
-    // for half an hour after this says the switcher is gone. It belongs to
-    // whichever install the hooks named, so it is only stopped when that is
-    // this one.
     if ours {
         if !super::watch::stop_and_wait(WATCHER_WAIT) {
             say(
@@ -71,9 +45,6 @@ pub fn run(opts: &Options) -> i32 {
             Color::Green,
         );
     }
-    // On Windows the binary running this cannot delete itself, so the last of
-    // it is handed to a copy that outlives this process. Everything the user is
-    // told above has already happened; this is the file going after the message.
     let handed_over = stuck && reaper(&tools);
     if stuck && !handed_over {
         say(
@@ -105,10 +76,6 @@ pub fn run(opts: &Options) -> i32 {
         }
     }
 
-    // The slash commands sit in one directory for every install of this, so
-    // they belong to whichever one the settings name. Taking them out from
-    // under a second install is how uninstalling the copy you did not want
-    // breaks the one you did.
     if ours {
         let gone = commands();
         if gone > 0 {
@@ -161,13 +128,6 @@ pub fn run(opts: &Options) -> i32 {
     0
 }
 
-/// Whether the Claude Code settings name the install being removed. Answers
-/// true when nothing there mentions the switcher at all: there is nothing to
-/// take out, and the calls below are what write the absence of it.
-///
-/// Compared as text, because that is what the settings hold: a command line
-/// with a path quoted inside it. The separators are levelled and Windows is
-/// matched without case, which is how that platform compares paths anyway.
 fn settings_point_here(tools: &Path) -> bool {
     let path = crate::provider::claude_config_dir().join("settings.json");
     let Some(settings) = crate::jsonio::read(&path) else {
@@ -199,7 +159,6 @@ fn settings_point_here(tools: &Path) -> bool {
     ours.iter().any(|text| text.contains(&wanted))
 }
 
-/// Every `command` string under a hook event, however deeply the groups nest.
 fn collect_commands(node: &serde_json::Value, out: &mut Vec<String>) {
     match node {
         serde_json::Value::Array(items) => {
@@ -222,8 +181,6 @@ fn collect_commands(node: &serde_json::Value, out: &mut Vec<String>) {
     }
 }
 
-/// One spelling for a path that may arrive with either separator, and without
-/// case on the platform that ignores it.
 fn level(text: &str) -> String {
     let text = text.replace('\\', "/");
     if cfg!(windows) {
@@ -233,13 +190,6 @@ fn level(text: &str) -> String {
     }
 }
 
-/// Starts the copy that finishes the job once this process is gone: on Windows
-/// a running image cannot be deleted, whatever it is called, so the file this
-/// very code runs from outlives the uninstall by however long the shell takes
-/// to return. The copy lives in the temporary directory, waits for the name to
-/// come free, takes it, and removes the directory if nothing else is left.
-///
-/// Answers whether one was started. False means the caller says so itself.
 fn reaper(tools: &Path) -> bool {
     let Ok(exe) = std::env::current_exe() else {
         return false;
@@ -249,8 +199,6 @@ fn reaper(tools: &Path) -> bool {
         std::process::id(),
         std::env::consts::EXE_SUFFIX
     ));
-    // The copy from the last uninstall is still there: it is the one file that
-    // cannot delete itself. Whichever one runs next takes it.
     sweep_reapers();
     let _ = std::fs::remove_file(&stand_in);
     if std::fs::copy(&exe, &stand_in).is_err() {
@@ -268,15 +216,7 @@ fn reaper(tools: &Path) -> bool {
     crate::proc::spawn_detached(&mut command).is_ok()
 }
 
-/// The other half of that: run from the copy, with nothing to do but wait for
-/// the file to come free. It gives up after a while — a shell left open on the
-/// binary is not worth a process that waits forever — and what it leaves behind
-/// is what the next install sweeps anyway.
 pub fn reap(opts: &Options) -> i32 {
-    // -ToolsDir is not optional here, and the command is not in the help: this
-    // is only ever reached by the copy an uninstall starts, which passes one.
-    // Without the guard, somebody typing it by hand would delete a working
-    // install from under themselves.
     if opts.tools_dir.is_none() {
         return 64;
     }
@@ -297,8 +237,6 @@ pub fn reap(opts: &Options) -> i32 {
     0
 }
 
-/// Old reaper copies in the temporary directory. Each one outlives the process
-/// that ran it, so they are swept by the next one rather than by themselves.
 fn sweep_reapers() {
     let temp = std::env::temp_dir();
     let Ok(entries) = std::fs::read_dir(&temp) else {
@@ -314,10 +252,6 @@ fn sweep_reapers() {
         if !ours || name.starts_with(&mine_new) || name.starts_with(&mine_old) {
             continue;
         }
-        // A copy younger than the wait it was given may still be sitting on a
-        // binary somebody has open. Windows would refuse to delete it anyway;
-        // this is so the same code does not unlink a working one on the
-        // platforms that would allow it.
         let working = entry
             .metadata()
             .and_then(|about| about.modified())
@@ -333,8 +267,6 @@ fn sweep_reapers() {
     }
 }
 
-/// Whether anything is left in the tools directory that is not ours. The binary
-/// on its way out does not count: it is either gone already or about to be.
 fn empty(tools: &Path) -> bool {
     let exe = super::install::exe_name();
     let ours = [
@@ -365,9 +297,6 @@ fn confirmed(tools: &Path) -> bool {
     said_yes(&ask("Continue? [y/N]"))
 }
 
-/// Named one by one rather than removing the whole directory: kebacc-codex
-/// installs its binary into this same directory, and taking the directory would
-/// uninstall a plugin nobody asked about.
 fn files(tools: &Path) -> (usize, bool) {
     if !tools.is_dir() {
         return (0, false);
@@ -376,9 +305,6 @@ fn files(tools: &Path) -> (usize, bool) {
     let mut removed = 0;
     let mut named: Vec<String> = vec![
         exe.clone(),
-        // Both spellings of the binary moved aside: `update` renames it by
-        // replacing the extension, and the scripts this replaced wrote the
-        // other one.
         format!("{exe}.old"),
         "kebacc.old".to_string(),
         "kebacc-switch.old".to_string(),
@@ -396,14 +322,9 @@ fn files(tools: &Path) -> (usize, bool) {
         if std::fs::remove_file(&path).is_ok() {
             removed += 1;
         } else if *name == exe {
-            // Windows holds the name of a running image, and the binary is the
-            // only file here that is ever running. Anything else refusing to go
-            // is a permission problem, which a copy left behind cannot fix
-            // either — it is reported by the directory that stays.
             stuck = true;
         }
     }
-    // Half-finished updates: kebacc.<pid>.new, and the pre-rename spelling.
     if let Ok(entries) = std::fs::read_dir(tools) {
         for entry in entries.flatten() {
             let name = entry.file_name();
@@ -437,8 +358,6 @@ fn commands() -> usize {
     gone
 }
 
-/// The function is one block: the marker and the line under it. Only those two
-/// go, and anything else in the profile stays.
 fn profiles(tools: &Path) {
     let wanted = level(&tools.join(super::install::exe_name()).display().to_string());
     for path in super::install::profile_paths() {
@@ -448,9 +367,6 @@ fn profiles(tools: &Path) {
         if !super::install::has_profile_block(&existing) {
             continue;
         }
-        // The line under the marker names the binary it runs. One that names
-        // another install is that install's line, and this is not the command
-        // that gets to take it out.
         if !block_body(&existing)
             .iter()
             .any(|line| level(line).contains(&wanted))
@@ -471,7 +387,6 @@ fn profiles(tools: &Path) {
     }
 }
 
-/// The lines under each marker: what the block actually runs.
 fn block_body(existing: &str) -> Vec<String> {
     let mut out = Vec::new();
     let mut take_next = false;

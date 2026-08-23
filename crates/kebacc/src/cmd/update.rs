@@ -73,6 +73,18 @@ pub fn run(opts: &Options) -> i32 {
         }
         return 1;
     };
+    if asset.digest.is_none() {
+        if opts.quiet {
+            return 1;
+        }
+        say(
+            &format!(
+                "Release {} publishes no checksum for its build. Installing it means trusting the download itself.",
+                release.version
+            ),
+            Color::Yellow,
+        );
+    }
     match install(&asset, &here, &release.version) {
         Ok(()) => {
             if !opts.quiet {
@@ -351,10 +363,6 @@ fn download(url: &str) -> Result<Vec<u8>, String> {
 }
 
 pub fn swap(exe: &Path, fresh: &Path) -> Result<(), String> {
-    // A watcher from the old binary keeps checking with the old code until its
-    // session ends. Renaming the running exe out of the way works on Windows,
-    // so this is not about the swap succeeding: it is about not leaving last
-    // week's logic running for hours.
     super::watch::request_stop();
     let stale = exe.with_extension("old");
     let _ = std::fs::remove_file(&stale);

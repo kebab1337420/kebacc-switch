@@ -8,8 +8,6 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 const DEFAULT_INTERVAL_MS: u128 = 5 * 60 * 1000;
 
-/// Read the quota of every saved account again and leave it in the snapshots.
-/// Prints nothing: this is what the status line spawns behind itself.
 pub fn run(provider: &Provider, opts: &Options) -> i32 {
     let pool = Pool::new(provider).entries();
     let readable: Vec<&Entry> = pool
@@ -23,8 +21,6 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
     0
 }
 
-/// Called on every status line draw. Spawns a detached refresh when the saved
-/// numbers have gone stale, at most once per interval across every session.
 pub fn nudge() {
     if std::env::var("KEBACC_SWITCH_STATUSLINE_REFRESH")
         .is_ok_and(|flag| crate::cmd::statusline::off(&flag))

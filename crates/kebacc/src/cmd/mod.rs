@@ -8,6 +8,8 @@ pub mod list;
 pub mod midtask;
 pub mod refresh;
 pub mod remove;
+pub mod set;
+pub mod status;
 pub mod statusline;
 pub mod switch;
 pub mod uninstall;
@@ -30,8 +32,6 @@ pub struct Options {
     pub protect: bool,
     pub adopt: bool,
     pub rollback: bool,
-    /// `doctor -Renew`: ask the token endpoint for a new pair for every saved
-    /// login whose own has run out, and keep what comes back.
     pub renew: bool,
     pub clean: bool,
     pub countdown: bool,
@@ -40,21 +40,21 @@ pub struct Options {
     pub drop: bool,
     pub check: bool,
     pub spawned: bool,
-    /// Decide on the snapshots already on disk and never call the quota API.
-    /// What the session-start hook runs on: the terminal shows nothing until
-    /// that hook answers.
     pub offline: bool,
     pub statusline: Option<bool>,
     pub updates: Option<bool>,
-    /// Where the binary lives, for `install` and `uninstall`. Unset means
-    /// ~/.claude-tools, and the tests in ci.yml are what set it.
     pub tools_dir: Option<String>,
-    /// The binary `install` puts in place, when it is not the one running.
     pub binary: Option<String>,
     pub auto_switch: bool,
     pub no_profile_edit: bool,
-    /// `uninstall -Pool`: delete the saved logins too.
     pub pool: bool,
+    pub json: bool,
+    pub fix: bool,
+    pub rank: Option<i64>,
+    pub reserve: Option<bool>,
+    pub on_switch: Option<String>,
+    pub five_hour: Option<f64>,
+    pub seven_day: Option<f64>,
 }
 
 pub fn current<'a>(provider: &Provider, pool: &'a [Entry]) -> Option<&'a Entry> {

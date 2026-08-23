@@ -12,6 +12,7 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 const POOL_VERSION: u64 = 2;
+const KEPT_FIELDS: [&str; 2] = ["priority", "reserve"];
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Trust {
@@ -41,6 +42,8 @@ pub struct Entry {
     pub cache: Option<Value>,
     pub protected: bool,
     pub trust: Trust,
+    pub priority: i64,
+    pub reserve: bool,
 }
 
 impl Entry {
@@ -97,6 +100,7 @@ impl<'a> Pool<'a> {
 
     pub fn entries(&self) -> Vec<Entry> {
         let key = self.key(false);
+        let manifest = self.manifest();
         let mut files: Vec<PathBuf> = match std::fs::read_dir(&self.provider.store) {
             Ok(dir) => dir
                 .filter_map(|e| e.ok())
@@ -125,7 +129,13 @@ impl<'a> Pool<'a> {
                     identity: identity_of(&snapshot),
                     cache: jsonio::obj(&snapshot, "usageCache"),
                     protected: snapshot.get("credentialsProtected").is_some(),
-                    trust: self.verify(key.as_deref(), &name, &snapshot),
+                    trust: self.verify(key.as_deref(), manifest.as_ref(), &name, &snapshot),
+                    priority: recorded(manifest.as_ref(), &name, "priority")
+                        .and_then(Value::as_i64)
+                        .unwrap_or(0),
+                    reserve: recorded(manifest.as_ref(), &name, "reserve")
+                        .and_then(Value::as_bool)
+                        .unwrap_or(false),
                     file,
                     snapshot,
                 })
@@ -158,16 +168,103 @@ impl<'a> Pool<'a> {
             .get_mut("accounts")
             .and_then(Value::as_object_mut)
             .expect("just ensured accounts is an object");
-        accounts.insert(
-            file_name.to_string(),
-            json!({
-                "email": email,
-                "accountUuid": uuid,
-                "credHash": cred_hash,
-                "stamp": stamp,
-                "registered": crate::usage::now_iso(),
-            }),
-        );
+        let kept = accounts.get(file_name).cloned();
+        let mut record = json!({
+            "email": email,
+            "accountUuid": uuid,
+            "credHash": cred_hash,
+            "stamp": stamp,
+            "registered": crate::usage::now_iso(),
+        });
+        for name in KEPT_FIELDS {
+            if let Some(value) = kept.as_ref().and_then(|k| k.get(name)) {
+                jsonio::map_mut(&mut record).insert(name.to_string(), value.clone());
+            }
+        }
+        accounts.insert(file_name.to_string(), record);
+        jsonio::write(&self.manifest_file(), &manifest).is_ok()
+    }
+
+    pub fn set_priority(&self, file_name: &str, priority: i64) -> bool {
+        self.set_field(file_name, "priority", json!(priority))
+    }
+
+    pub fn set_reserve(&self, file_name: &str, reserve: bool) -> bool {
+        self.set_field(file_name, "reserve", json!(reserve))
+    }
+
+    fn set_field(&self, file_name: &str, field: &str, value: Value) -> bool {
+        let Some(mut manifest) = self.manifest() else {
+            return false;
+        };
+        let Some(record) = manifest
+            .get_mut("accounts")
+            .and_then(Value::as_object_mut)
+            .and_then(|a| a.get_mut(file_name))
+        else {
+            return false;
+        };
+        jsonio::map_mut(record).insert(field.into(), value);
+        jsonio::write(&self.manifest_file(), &manifest).is_ok()
+    }
+
+    pub fn on_switch(&self) -> Option<String> {
+        let text = self
+            .manifest()?
+            .get("onSwitch")
+            .and_then(Value::as_str)?
+            .trim()
+            .to_string();
+        (!text.is_empty()).then_some(text)
+    }
+
+    pub fn set_on_switch(&self, command: Option<&str>) -> bool {
+        let mut manifest = self
+            .manifest()
+            .unwrap_or_else(|| json!({ "version": POOL_VERSION, "accounts": Map::new() }));
+        let map = jsonio::map_mut(&mut manifest);
+        match command {
+            Some(command) => {
+                map.insert("onSwitch".into(), json!(command));
+            }
+            None => {
+                map.remove("onSwitch");
+            }
+        }
+        jsonio::write(&self.manifest_file(), &manifest).is_ok()
+    }
+
+    pub fn caps(&self) -> [Option<f64>; 2] {
+        let manifest = self.manifest();
+        let read = |name: &str| {
+            manifest
+                .as_ref()
+                .and_then(|m| m.get("thresholds"))
+                .and_then(|t| t.get(name))
+                .and_then(Value::as_f64)
+                .filter(|value| *value > 0.0 && *value <= 100.0)
+        };
+        [read("five_hour"), read("seven_day")]
+    }
+
+    pub fn set_caps(&self, five_hour: Option<f64>, seven_day: Option<f64>) -> bool {
+        let mut manifest = self
+            .manifest()
+            .unwrap_or_else(|| json!({ "version": POOL_VERSION, "accounts": Map::new() }));
+        let map = jsonio::map_mut(&mut manifest);
+        let mut thresholds = map.get("thresholds").cloned().unwrap_or_else(|| json!({}));
+        let holder = jsonio::map_mut(&mut thresholds);
+        for (name, value) in [("five_hour", five_hour), ("seven_day", seven_day)] {
+            match value {
+                Some(value) => {
+                    holder.insert(name.into(), json!(value));
+                }
+                None => {
+                    holder.remove(name);
+                }
+            }
+        }
+        map.insert("thresholds".into(), thresholds);
         jsonio::write(&self.manifest_file(), &manifest).is_ok()
     }
 
@@ -184,9 +281,15 @@ impl<'a> Pool<'a> {
         let _ = jsonio::write(&self.manifest_file(), &manifest);
     }
 
-    fn verify(&self, key: Option<&[u8]>, file_name: &str, snapshot: &Value) -> Trust {
+    fn verify(
+        &self,
+        key: Option<&[u8]>,
+        manifest: Option<&Value>,
+        file_name: &str,
+        snapshot: &Value,
+    ) -> Trust {
         let Some(key) = key else { return Trust::NoKey };
-        let Some(manifest) = self.manifest() else {
+        let Some(manifest) = manifest else {
             return Trust::Unknown;
         };
         let Some(entry) = manifest.get("accounts").and_then(|a| a.get(file_name)) else {
@@ -225,6 +328,10 @@ impl<'a> Pool<'a> {
     }
 }
 
+fn recorded<'v>(manifest: Option<&'v Value>, file_name: &str, field: &str) -> Option<&'v Value> {
+    manifest?.get("accounts")?.get(file_name)?.get(field)
+}
+
 pub fn snapshot_creds(snapshot: &Value) -> Option<String> {
     if let Some(sealed) = jsonio::str_of(snapshot, "credentialsProtected") {
         return seal::unprotect(&sealed);
@@ -261,9 +368,6 @@ fn sha256_hex(text: &str) -> String {
     digest.iter().map(|b| format!("{b:02x}")).collect()
 }
 
-/// A short, stable name for an account, taken from a secret that must not be
-/// stored or shown. Antigravity has no account id of its own; the refresh
-/// token is the value that stays put, so the digest is what is filed.
 pub fn short_hash(text: &str) -> String {
     sha256_hex(text).chars().take(12).collect()
 }
@@ -295,9 +399,6 @@ fn cred_hash(creds_raw: Option<&str>) -> String {
         return sha256_hex(&key);
     }
     if let Some(token) = crate::live::token_of(&creds) {
-        // The access token is left out: Antigravity refreshes it behind this
-        // tool's back, and a hash that moved every hour would call every saved
-        // login tampered with.
         return sha256_hex(&format!(
             "{}|{}",
             jsonio::str_of(token, "refresh_token").unwrap_or_default(),
@@ -357,9 +458,6 @@ pub fn new_snapshot(
     (Value::Object(entry), protected)
 }
 
-/// Put a fresh credentials document into a snapshot that already exists,
-/// keeping everything else it holds, and stamp it again so the pool still
-/// counts it as one this machine registered.
 pub fn save_creds(provider: &Provider, file: &Path, raw: &str) -> bool {
     let previous = jsonio::read(file);
     let email = previous
@@ -517,10 +615,6 @@ mod tests {
             Some("2026-01-01T00:00:00Z")
         );
         assert!(entry.cache.is_some());
-        // The stamp is written again, so the pool still knows the account. A
-        // machine with no secret backend, which is most CI Linux, holds no key
-        // to stamp with and reads every snapshot as unverified. What has to
-        // hold everywhere is that the rewrite never reads as CHANGED.
         let stamped = Pool::new(&provider).key(false).is_some();
         assert!(matches!(entry.trust, Trust::Trusted | Trust::NoKey));
         assert!(!stamped || matches!(entry.trust, Trust::Trusted));

@@ -1,22 +1,6 @@
-//! The operating system's credential store, as Antigravity uses it.
-//!
-//! The IDE keeps its login here rather than in a file, under the same entry on
-//! every platform: service `gemini`, user `antigravity`. The CLI keeps a
-//! byte-identical copy in a file of its own, so a switch has to write both or
-//! the two halves end up signed in as different people.
-//!
-//! Everything here is best effort. A machine where only the CLI is installed
-//! has no entry to read, a locked keyring answers with an error rather than a
-//! payload, and neither is a reason to fail a switch: the file is the part that
-//! must land, and this is the part that follows it.
-
 const SERVICE: &str = "gemini";
 const ACCOUNT: &str = "antigravity";
 
-/// Go's keyring library, which Antigravity is built on, base64s any payload it
-/// considers unsafe to store raw and marks it with this prefix. Reading has to
-/// undo that; writing does not have to do it, since a plain JSON payload is one
-/// the library stores as it stands.
 const GO_KEYRING_BASE64: &str = "go-keyring-base64:";
 
 fn decode(payload: &str) -> Option<String> {
@@ -45,9 +29,6 @@ mod platform {
         CredFree, CredReadW, CredWriteW, CREDENTIALW, CRED_PERSIST_LOCAL_MACHINE, CRED_TYPE_GENERIC,
     };
 
-    /// The name Windows files the entry under. Go's keyring joins the service
-    /// and the user with a colon on this platform, and Antigravity's entry is
-    /// the one that name lands on.
     fn target() -> Vec<u16> {
         wide(&format!("{SERVICE}:{ACCOUNT}"))
     }
@@ -62,9 +43,6 @@ mod platform {
     pub fn read() -> Option<String> {
         let target = target();
         let mut credential: *mut CREDENTIALW = std::ptr::null_mut();
-        // SAFETY: `target` is a NUL-terminated wide string that outlives the
-        // call, and the pointer handed back is freed below whether or not the
-        // payload it carries turns out to be readable.
         let ok = unsafe {
             CredReadW(
                 target.as_ptr(),
@@ -76,8 +54,6 @@ mod platform {
         if ok != TRUE || credential.is_null() {
             return None;
         }
-        // SAFETY: Windows answered TRUE, so the blob it points at is valid for
-        // the length it reports, and it stays valid until `CredFree`.
         let payload = unsafe {
             let blob = std::slice::from_raw_parts(
                 (*credential).CredentialBlob,
@@ -111,8 +87,6 @@ mod platform {
             TargetAlias: std::ptr::null_mut(),
             UserName: account.as_mut_ptr(),
         };
-        // SAFETY: every pointer in the struct borrows a local that outlives the
-        // call, and the sizes handed over are the lengths of those locals.
         let ok = unsafe { CredWriteW(&mut credential as *const _, 0) };
         if ok == TRUE {
             Ok(())
@@ -141,8 +115,6 @@ mod platform {
     }
 
     pub fn write(payload: &str) -> Result<(), String> {
-        // `-U` updates the entry in place when it is already there, and `-A`
-        // spares the user a prompt on every read the IDE makes afterwards.
         let status = std::process::Command::new("security")
             .args([
                 "add-generic-password",
@@ -215,12 +187,6 @@ mod platform {
     }
 }
 
-/// Set to anything to leave the credential store alone, in both directions.
-///
-/// The store is the one thing this tool touches that lives outside its own
-/// directories, and it is shared with the IDE. A test run, a CI job, or a
-/// machine where only the CLI is signed in has no business writing it, and this
-/// is how they say so.
 const OFF: &str = "KEBACC_SWITCH_NO_KEYRING";
 
 fn allowed() -> bool {

@@ -38,8 +38,15 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
 
     if let Some(rank) = opts.rank {
         let entries = pool.entries();
-        let Some(entry) = super::switch::pick(&entries, None, opts.email.as_deref()) else {
-            say("No matching account.", Color::Red);
+        let entry = match opts.email.as_deref() {
+            Some(email) => super::switch::pick(&entries, None, Some(email)),
+            None => super::current(provider, &entries),
+        };
+        let Some(entry) = entry else {
+            say(
+                "Name the account: kebacc set -Rank <n> -Email you@example.com",
+                Color::Red,
+            );
             return 1;
         };
         if !pool.set_priority(&entry.file_name(), rank) {

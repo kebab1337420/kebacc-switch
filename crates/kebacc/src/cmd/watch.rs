@@ -93,7 +93,6 @@ pub fn ensure_running(wanted: &crate::provider::Wanted) {
     if watcher_alive() {
         return;
     }
-    beat();
     let Ok(exe) = std::env::current_exe() else {
         return;
     };
@@ -105,7 +104,9 @@ pub fn ensure_running(wanted: &crate::provider::Wanted) {
         .stdout(Stdio::null())
         .stderr(Stdio::null());
     crate::proc::detach(&mut command);
-    let _ = crate::proc::spawn_detached(&mut command);
+    if crate::proc::spawn_detached(&mut command).is_ok() {
+        beat();
+    }
 }
 
 pub fn request_stop() {

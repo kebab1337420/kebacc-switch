@@ -196,10 +196,10 @@ fn dispatch(args: &[String]) -> i32 {
         return cmd::update::run(&options);
     }
 
-    if command == "auto" && options.hook && !options.spawned && !options.midtask {
+    if waits_on_the_terminal(command, &options) {
         cmd::update::maybe();
         cmd::watch::ensure_running(&options.wanted);
-        options.offline = waits_on_the_terminal(command, &options);
+        options.offline = true;
     }
 
     if command == "watch" {

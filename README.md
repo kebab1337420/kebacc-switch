@@ -29,11 +29,16 @@ kebacc switch -codex
 kebacc add -ag
 ```
 
-Full name or short: `-claude`/`-cc`, `-codex`/`-cx`, `-antigravity`/`-ag`, `-all`.
+Full name or short: `-claude`/`-cc`, `-codex`/`-cx`, `-antigravity`/`-ag`,
+`-grok`/`-gk`, `-all`.
 `list`, `auto`, `doctor` and `arm` with no flag mean every pool. `add`,
 `switch`, `remove`, `set` and `use` need one. Uninstall takes the binary and the slash commands. The saved
 logins stay until you pass `-Pool`. An install or update rewrites leftover
 `-Provider` hooks and sweeps the old per-pool slash commands.
+
+Grok publishes no usage of its own, so it is saved, listed, switched and given
+a session directory like any other pool, but without numbers: `auto` passes over
+it, and `set -FiveHour` and `-SevenDay` are refused for it.
 
 ---
 
@@ -113,7 +118,7 @@ Ten commands. The pool is an argument, same flags as the binary.
 | Command | What it does |
 | --- | --- |
 | `/kebacc-list` | saved accounts. `/kebacc-list -ag` for Antigravity only |
-| `/kebacc-add` | save the login you are on. Needs `-ag`, `-claude` or `-codex` |
+| `/kebacc-add` | save the login you are on. Needs `-ag`, `-claude`, `-codex` or `-grok` |
 | `/kebacc-switch` | put a saved login in front |
 | `/kebacc-remove` | forget a saved login |
 | `/kebacc-auto` | arm the auto-switch. `/kebacc-auto off` disarms it |
@@ -149,7 +154,7 @@ kebacc refresh -codex                   # re-read that pool, print nothing
 kebacc update
 ```
 
-`-claude`/`-cc`, `-codex`/`-cx`, `-antigravity`/`-ag`, `-all`. No flag on list,
+`-claude`/`-cc`, `-codex`/`-cx`, `-antigravity`/`-ag`, `-grok`/`-gk`, `-all`. No flag on list,
 auto, doctor, arm, watch and refresh means every pool. add, switch, remove, set
 and use need one.
 
@@ -179,6 +184,7 @@ and use need one.
 | `~/.kebacc-switch-accounts/` | the Claude Code pool |
 | `~/.kebacc-switch-codex-accounts/` | the Codex pool |
 | `~/.kebacc-switch-antigravity-accounts/` | the Antigravity pool |
+| `~/.kebacc-switch-grok-accounts/` | the Grok pool |
 
 Saved credentials are sealed before they touch disk: DPAPI on Windows, and
 AES-256-GCM under a key held by the macOS Keychain or by libsecret elsewhere.

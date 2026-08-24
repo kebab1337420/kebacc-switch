@@ -1,10 +1,10 @@
 ---
 description: Save the login you are on into a pool
 allowed-tools: Bash(~/.claude-tools/kebacc:*), Bash(~/.claude-tools/kebacc.exe:*)
-argument-hint: "-ag|-claude|-codex"
+argument-hint: "-ag|-claude|-codex|-opencode"
 ---
 
-Run `~/.claude-tools/kebacc`, or `~/.claude-tools/kebacc.exe` on Windows. The argument names the pool (`-ag`, `-antigravity`, `-claude`, `-cc`, `-codex`, `-cx`). One pool is required.
+Run `~/.claude-tools/kebacc`, or `~/.claude-tools/kebacc.exe` on Windows. The argument names the pool (`-ag`, `-antigravity`, `-claude`, `-cc`, `-codex`, `-cx`, `-opencode`, `-oc`). One pool is required.
 
 ```
 ~/.claude-tools/kebacc add $ARGUMENTS

@@ -1,6 +1,6 @@
 # Kebacc switch
 
-Several logins for Claude Code, Codex and Antigravity, saved on this
+Several logins for Claude Code, Codex, Antigravity and OpenCode, saved on this
 machine, and one command to move between them when one runs out of quota.
 
 It is a Rust binary: the crate is `crates/kebacc` at the root of this
@@ -53,7 +53,15 @@ own runtime first.
   `-Check` only says whether one is out.
 
 `list`, `auto`, `status` and `doctor` with no flag mean every pool. `add`,
-`switch`, `remove`, `set` and `use` need one: `-claude`/`-cc`, `-codex`/`-cx`, `-antigravity`/`-ag`.
+`switch`, `remove`, `set` and `use` need one: `-claude`/`-cc`, `-codex`/`-cx`, `-antigravity`/`-ag`,
+`-opencode`/`-oc`.
+
+OpenCode publishes no usage of its own. It is saved, listed, switched and given a session
+directory like any other pool; what it does not get is numbers — `list` and `status`
+leave that column empty, `auto` passes over it, and `set -FiveHour`/`-SevenDay` are
+refused for it. Its home variable is `XDG_DATA_HOME`, which no one program owns,
+so `use` says out loud that a shell carrying it sends everything else that reads
+it to the same directory.
 
 ```
 kebacc list
@@ -98,7 +106,7 @@ session that is already running.
 
 ## Switching without being asked
 
-`kebacc arm -ag` (or `-claude`, `-codex`, `-all`, `off`) is what arms it after
+`kebacc arm -ag` (or `-claude`, `-codex`, `-opencode`, `-all`, `off`) is what arms it after
 the fact. It writes that hook and nothing else, never touching the account in
 use. The slash command `/kebacc-auto` is that command; switching the live login
 is `/kebacc-switch`.
@@ -176,7 +184,7 @@ time, machine-wide, however many sessions are open.
 
 Inside Claude Code the same things are slash commands: `/kebacc-list`,
 `/kebacc-add`, `/kebacc-switch`, `/kebacc-remove`, `/kebacc-auto`,
-`/kebacc-doctor`, `/kebacc-update`. Pass `-ag` (or `-claude`, `-codex`) as the
+`/kebacc-doctor`, `/kebacc-update`. Pass `-ag` (or `-claude`, `-codex`, `-opencode`) as the
 argument. The root [`README.md`](../../README.md) lists them.
 
 ## Where things are kept
@@ -187,6 +195,7 @@ argument. The root [`README.md`](../../README.md) lists them.
 | `~/.kebacc-switch-accounts/` | saved Claude Code logins |
 | `~/.kebacc-switch-codex-accounts/` | saved Codex logins |
 | `~/.kebacc-switch-antigravity-accounts/` | saved Antigravity logins |
+| `~/.kebacc-switch-opencode-accounts/` | saved OpenCode logins |
 | `~/.claude/commands/kebacc-*.md` | the slash commands |
 | `~/.kebacc-switch/` | stamps, locks and caches (`KEBACC_SWITCH_STATE_DIR` moves it) |
 | `~/.kebacc-switch/kebacc.log` | what every switch did, rotated at 512 KB (`KEBACC_SWITCH_LOG=off` stops it) |
@@ -273,7 +282,7 @@ Linux. Download the one for the machine and ask it to install itself.
 src/commands/*.md               the slash commands, carried by the binary
                                  as include_str!, one per entry in COMMANDS
 VERSION                         the number the install stamps into .version
-crates/kebacc/src/main.rs       the entry point, and `-ag` / `-claude` / `-codex`
+crates/kebacc/src/main.rs       the entry point, and `-ag` / `-claude` / `-codex` / `-opencode`
 crates/kebacc/src/provider.rs   what each CLI keeps on disk
 crates/kebacc/src/pool.rs       the trust stamps
 crates/kebacc-core/src/seal.rs  DPAPI, Keychain, libsecret

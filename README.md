@@ -30,8 +30,8 @@ kebacc add -ag
 ```
 
 Full name or short: `-claude`/`-cc`, `-codex`/`-cx`, `-antigravity`/`-ag`, `-all`.
-`list`, `auto` and `doctor` with no flag mean every pool. `add`, `switch` and
-`remove` need one. Uninstall takes the binary and the slash commands. The saved
+`list`, `auto`, `doctor` and `arm` with no flag mean every pool. `add`,
+`switch`, `remove`, `set` and `use` need one. Uninstall takes the binary and the slash commands. The saved
 logins stay until you pass `-Pool`. An install or update rewrites leftover
 `-Provider` hooks and sweeps the old per-pool slash commands.
 
@@ -108,7 +108,7 @@ same flag, so a habit from either shell works:
 
 ## Slash commands
 
-Seven commands. The pool is an argument, same flags as the binary.
+Ten commands. The pool is an argument, same flags as the binary.
 
 | Command | What it does |
 | --- | --- |
@@ -118,6 +118,9 @@ Seven commands. The pool is an argument, same flags as the binary.
 | `/kebacc-remove` | forget a saved login |
 | `/kebacc-auto` | arm the auto-switch. `/kebacc-auto off` disarms it |
 | `/kebacc-doctor` | check the install and the pools |
+| `/kebacc-status` | what is live, what it has left, what is armed |
+| `/kebacc-set` | per-pool settings: rank, reserve, thresholds, on-switch command |
+| `/kebacc-use` | set a session directory up on one account |
 | `/kebacc-update` | install the newest release |
 
 A list command always asks the API rather than reading the cache, and always
@@ -147,8 +150,8 @@ kebacc update
 ```
 
 `-claude`/`-cc`, `-codex`/`-cx`, `-antigravity`/`-ag`, `-all`. No flag on list,
-auto, doctor, watch and refresh means every pool. add, switch and remove need
-one.
+auto, doctor, arm, watch and refresh means every pool. add, switch, remove, set
+and use need one.
 
 ### Exit codes
 
@@ -157,7 +160,7 @@ one.
 | `0` | nothing to do |
 | `1` | a problem, reported on a `!` line |
 | `2` | no identity to save |
-| `10` | switched |
+| `10` | switched, or `update -Check` found a newer release |
 | `20` | every saved account is capped |
 | `30` | fewer than two accounts saved |
 | `64` | unknown command |

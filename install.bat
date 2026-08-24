@@ -48,7 +48,7 @@ if errorlevel 1 goto failed
 
 del "%EXE%" >nul 2>&1
 echo.
-echo Done. Restart Claude Code, then run /kebacc-add-claude to save the login you are on.
+echo Done. Restart Claude Code, then run "/kebacc-add -claude" to save the login you are on.
 if defined KEBACC_NO_PAUSE exit /b 0
 pause
 exit /b 0

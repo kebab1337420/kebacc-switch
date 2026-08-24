@@ -43,6 +43,12 @@ jobs:
             cross: true
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+          # install.bat and cmd/update.rs both ask for this asset on an ARM64
+          # machine, so the release has to carry one. Built on the arm runner
+          # because the x86_64 image does not always carry the ARM64 MSVC
+          # cross tools.
+          - os: windows-11-arm
+            target: aarch64-pc-windows-msvc
     steps:
       - uses: actions/checkout@v7
         with:
@@ -84,7 +90,7 @@ jobs:
 
       - name: Test
         if: '!matrix.cross'
-        run: cargo test --release --target ${{ matrix.target }} -p ${{ steps.half.outputs.package }}
+        run: cargo test --release --target ${{ matrix.target }} --workspace
 
       # The paths of the machine that built it have no business being in a
       # published binary.

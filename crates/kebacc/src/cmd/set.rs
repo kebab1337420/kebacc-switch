@@ -1,4 +1,5 @@
 use super::Options;
+use crate::branch::Quota;
 use crate::pool::Pool;
 use crate::provider::Provider;
 use crate::term::{say, Color};
@@ -6,6 +7,19 @@ use crate::term::{say, Color};
 pub fn run(provider: &Provider, opts: &Options) -> i32 {
     let pool = Pool::new(provider);
     let mut touched = false;
+
+    if (opts.five_hour.is_some() || opts.seven_day.is_some())
+        && matches!(provider.id.branch().quota, Quota::None)
+    {
+        say(
+            &format!(
+                "{} publishes no usage, so a switching threshold would never be read.",
+                provider.label
+            ),
+            Color::Red,
+        );
+        return 64;
+    }
 
     if opts.five_hour.is_some() || opts.seven_day.is_some() {
         let current = pool.caps();

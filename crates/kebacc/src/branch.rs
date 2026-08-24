@@ -30,12 +30,25 @@ pub enum ConfigAt {
 pub enum Token {
     Paths(&'static [&'static [&'static str]]),
     Antigravity,
+    None,
 }
 
 pub enum Identity {
     ConfigMember(&'static str),
     Codex,
     Antigravity,
+    Derived {
+        emails: &'static [&'static str],
+        ids: &'static [&'static str],
+        hash: Hash,
+    },
+}
+
+#[derive(Clone, Copy)]
+pub enum Hash {
+    Whole,
+    Fields(&'static [&'static str]),
+    None,
 }
 
 pub enum Quota {
@@ -48,6 +61,7 @@ pub enum Quota {
         not_for_prefix: Option<&'static str>,
     },
     Antigravity,
+    None,
 }
 
 pub const BRANCHES: &[Branch] = &[

@@ -20,11 +20,10 @@ impl ProviderId {
     ];
 
     pub fn index(self) -> usize {
-        match self {
-            ProviderId::Claude => 0,
-            ProviderId::Codex => 1,
-            ProviderId::Antigravity => 2,
-        }
+        Self::ALL
+            .iter()
+            .position(|known| *known == self)
+            .expect("every provider is listed in ALL")
     }
 
     pub fn at(index: usize) -> Option<ProviderId> {
@@ -585,9 +584,9 @@ mod tests {
     #[test]
     fn naming_every_pool_collapses_to_all() {
         let mut wanted = Wanted::unspecified();
-        wanted.add(ProviderId::Claude);
-        wanted.add(ProviderId::Codex);
-        wanted.add(ProviderId::Antigravity);
+        for id in ProviderId::ALL {
+            wanted.add(id);
+        }
         assert!(wanted.is_all());
         assert!(wanted.flags().is_empty());
     }

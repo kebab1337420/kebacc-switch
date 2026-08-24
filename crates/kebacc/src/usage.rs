@@ -215,6 +215,7 @@ pub fn window_now(value: Option<&Value>) -> Option<Window> {
 
 pub fn access_token(provider: &Provider, creds_raw: Option<&str>) -> Option<String> {
     match provider.id.branch().token {
+        Token::None => None,
         Token::Antigravity => antigravity_access_token(creds_raw),
         Token::Paths(paths) => {
             let creds: Value = serde_json::from_str(creds_raw?).ok()?;
@@ -277,6 +278,7 @@ fn get_json(url: &str, headers: &[(&str, &str)]) -> Option<Value> {
 
 pub fn fetch(provider: &Provider, token: Option<&str>) -> Option<Usage> {
     match provider.id.branch().quota {
+        Quota::None => None,
         Quota::Antigravity => fetch_antigravity(token),
         Quota::Get {
             url,

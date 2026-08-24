@@ -1,4 +1,5 @@
 use super::Options;
+use crate::branch::Quota;
 use crate::live;
 use crate::pool::{Pool, Trust};
 use crate::provider::Provider;
@@ -24,6 +25,17 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
             usage::for_entry(provider, entry, false)
         }
     };
+
+    if matches!(provider.id.branch().quota, Quota::None) {
+        note(
+            &format!(
+                "{} publishes no usage, so there is nothing to switch on. Switch it by hand.",
+                provider.label
+            ),
+            Color::Yellow,
+        );
+        return 30;
+    }
 
     let pool = Pool::new(provider).entries();
     if pool.len() < 2 {

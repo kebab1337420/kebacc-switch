@@ -446,7 +446,13 @@ mod tests {
     #[test]
     fn dropping_one_pool_leaves_the_rest() {
         let left = Wanted::all().minus(&Wanted::one(ProviderId::Antigravity));
-        assert_eq!(left.display(), "claude+codex");
+        assert_eq!(
+            left.ids(),
+            ProviderId::ALL
+                .into_iter()
+                .filter(|id| *id != ProviderId::Antigravity)
+                .collect::<Vec<_>>()
+        );
         assert!(Wanted::one(ProviderId::Claude)
             .minus(&Wanted::one(ProviderId::Claude))
             .is_off());

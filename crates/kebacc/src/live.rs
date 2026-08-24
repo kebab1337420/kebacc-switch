@@ -1,4 +1,4 @@
-use crate::branch::Identity;
+use crate::branch::{Hash, Identity};
 use crate::jsonio;
 use crate::lock;
 use crate::provider::Provider;
@@ -133,7 +133,36 @@ fn read_identity(provider: &Provider) -> Option<Value> {
             let creds: Value = serde_json::from_str(&raw).ok()?;
             antigravity_identity(&creds)
         }
+        Identity::Derived { emails, ids, hash } => {
+            let raw = creds_raw(provider)?;
+            let creds: Value = serde_json::from_str(&raw).ok()?;
+            derived_identity(&creds, emails, ids, hash)
+        }
     }
+}
+
+pub fn derived_identity(creds: &Value, emails: &[&str], ids: &[&str], hash: Hash) -> Option<Value> {
+    let email = emails
+        .iter()
+        .find_map(|field| jsonio::deep_str(creds, field));
+    let uuid = ids
+        .iter()
+        .find_map(|field| jsonio::deep_str(creds, field))
+        .or_else(|| match hash {
+            Hash::Whole => Some(crate::pool::short_hash(&jsonio::canonical(creds))),
+            Hash::Fields(fields) => fields
+                .iter()
+                .find_map(|field| jsonio::deep_str(creds, field))
+                .map(|secret| crate::pool::short_hash(&secret)),
+            Hash::None => None,
+        });
+    if email.is_none() && uuid.is_none() {
+        return None;
+    }
+    Some(json!({
+        "emailAddress": email,
+        "accountUuid": uuid,
+    }))
 }
 
 pub fn codex_identity(creds: &Value) -> Option<Value> {
@@ -581,7 +610,9 @@ pub fn activate(provider: &Provider, entry: &crate::pool::Entry) -> Result<Activ
 
 #[cfg(test)]
 mod tests {
-    use super::find_member;
+    use super::{derived_identity, find_member, Hash};
+    use crate::jsonio;
+    use serde_json::{json, Value};
 
     #[test]
     fn finds_a_member_of_the_root_object() {
@@ -626,5 +657,67 @@ mod tests {
         let text = r#"{"oauthAccount":null,"b":2}"#;
         let (start, end) = find_member(text, "oauthAccount").unwrap();
         assert_eq!(&text[start..end], "null");
+    }
+
+    #[test]
+    fn a_derived_identity_keeps_an_email_even_with_nothing_to_hash() {
+        let creds = json!({"email": "you@example.com"});
+        let found = derived_identity(&creds, &["email"], &["user_id"], Hash::None).unwrap();
+        assert_eq!(
+            jsonio::str_of(&found, "emailAddress").as_deref(),
+            Some("you@example.com")
+        );
+        assert_eq!(jsonio::str_of(&found, "accountUuid"), None);
+    }
+
+    #[test]
+    fn a_stable_id_wins_over_the_hash() {
+        let creds = json!({"user_id": "abc", "refresh": "one"});
+        let first =
+            derived_identity(&creds, &[], &["user_id"], Hash::Fields(&["refresh"])).unwrap();
+        let rotated = json!({"user_id": "abc", "refresh": "two"});
+        let second =
+            derived_identity(&rotated, &[], &["user_id"], Hash::Fields(&["refresh"])).unwrap();
+        assert_eq!(
+            jsonio::str_of(&first, "accountUuid"),
+            jsonio::str_of(&second, "accountUuid")
+        );
+    }
+
+    #[test]
+    fn hashing_the_whole_file_tells_two_accounts_apart() {
+        let one = json!({"anthropic": {"refresh": "shared"}, "openai": {"key": "first"}});
+        let two = json!({"anthropic": {"refresh": "shared"}, "openai": {"key": "second"}});
+        let id_of = |creds: &Value| {
+            jsonio::str_of(
+                &derived_identity(creds, &[], &[], Hash::Whole).unwrap(),
+                "accountUuid",
+            )
+        };
+        assert_ne!(id_of(&one), id_of(&two));
+    }
+
+    #[test]
+    fn the_order_members_were_written_in_does_not_change_the_hash() {
+        let one: Value = serde_json::from_str(r#"{"a":1,"b":{"c":2,"d":3}}"#).unwrap();
+        let two: Value = serde_json::from_str(r#"{"b":{"d":3,"c":2},"a":1}"#).unwrap();
+        assert_eq!(jsonio::canonical(&one), jsonio::canonical(&two));
+    }
+
+    #[test]
+    fn nothing_at_all_is_no_identity() {
+        let creds = json!({"unrelated": "value"});
+        assert!(derived_identity(&creds, &["email"], &["user_id"], Hash::None).is_none());
+    }
+
+    #[test]
+    fn a_deep_search_stops_before_it_runs_out_of_stack() {
+        let mut nest = json!({"key": "found"});
+        for _ in 0..40 {
+            nest = json!({"down": nest});
+        }
+        assert_eq!(jsonio::deep_str(&nest, "key"), None);
+        let shallow = json!({"down": {"key": "found"}});
+        assert_eq!(jsonio::deep_str(&shallow, "key").as_deref(), Some("found"));
     }
 }

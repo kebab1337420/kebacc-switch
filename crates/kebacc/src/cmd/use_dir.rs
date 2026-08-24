@@ -101,6 +101,16 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
         &format!("{} is set up in {}", entry.email, dir.display()),
         Color::Green,
     );
+    if branch.home_env_shared {
+        say(
+            &format!(
+                "{} is not {}'s alone: a shell carrying it sends every program that reads it to this directory. Keep that shell for the CLI.",
+                branch.home_env, provider.label
+            ),
+            Color::Yellow,
+        );
+    }
+
     say("Start the CLI from a shell that carries this:", Color::Dim);
     for line in export_lines(branch.home_env, &dir) {
         println!("  {line}");

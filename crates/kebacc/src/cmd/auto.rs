@@ -27,14 +27,16 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
     };
 
     if matches!(provider.id.branch().quota, Quota::None) {
-        note(
-            &format!(
-                "{} publishes no usage, so there is nothing to switch on. Switch it by hand.",
-                provider.label
-            ),
-            Color::Yellow,
-        );
-        return 30;
+        if !opts.wanted.is_all() {
+            note(
+                &format!(
+                    "{} publishes no usage, so there is nothing to switch on. Switch it by hand.",
+                    provider.label
+                ),
+                Color::Yellow,
+            );
+        }
+        return 0;
     }
 
     let pool = Pool::new(provider).entries();

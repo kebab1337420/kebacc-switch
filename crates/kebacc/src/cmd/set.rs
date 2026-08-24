@@ -18,7 +18,7 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
             ),
             Color::Red,
         );
-        return 64;
+        return 1;
     }
 
     if opts.five_hour.is_some() || opts.seven_day.is_some() {

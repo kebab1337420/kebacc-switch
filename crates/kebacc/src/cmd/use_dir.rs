@@ -44,9 +44,33 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
     }
     provider::reprotect_dir(&dir);
 
+    let branch = provider.id.branch();
+    let mut inner = dir.clone();
+    for part in branch.home_suffix {
+        inner.push(part);
+    }
+    if inner != dir {
+        if let Err(problem) = std::fs::create_dir_all(&inner) {
+            say(
+                &format!("Could not make {}: {problem}", inner.display()),
+                Color::Red,
+            );
+            return 1;
+        }
+        provider::reprotect_dir(&inner);
+    }
+    let config_candidates = branch
+        .config_files
+        .iter()
+        .map(|at| match at {
+            crate::branch::ConfigAt::Home(name) | crate::branch::ConfigAt::Dir(name) => {
+                inner.join(name)
+            }
+        })
+        .collect();
     let target = Provider {
-        cred_candidates: vec![dir.join(cred_name(provider))],
-        config_candidates: vec![dir.join(".claude.json")],
+        cred_candidates: vec![inner.join(branch.cred_file)],
+        config_candidates,
         uses_keychain: false,
         keychain_service: None,
         ..provider::spec(provider.id)
@@ -74,30 +98,21 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
         Color::Green,
     );
     say("Start the CLI from a shell that carries this:", Color::Dim);
-    for line in export_lines(&dir) {
+    for line in export_lines(branch.home_env, &dir) {
         println!("  {line}");
     }
     0
 }
 
-fn cred_name(provider: &Provider) -> String {
-    provider
-        .cred_candidates
-        .first()
-        .and_then(|path| path.file_name())
-        .map(|name| name.to_string_lossy().to_string())
-        .unwrap_or_else(|| ".credentials.json".to_string())
-}
-
-fn export_lines(dir: &std::path::Path) -> Vec<String> {
+fn export_lines(variable: &str, dir: &std::path::Path) -> Vec<String> {
     let dir = dir.display();
     if cfg!(windows) {
         vec![
-            format!("$env:CLAUDE_CONFIG_DIR = '{dir}'"),
-            format!("set CLAUDE_CONFIG_DIR={dir}"),
+            format!("$env:{variable} = '{dir}'"),
+            format!("set {variable}={dir}"),
         ]
     } else {
-        vec![format!("export CLAUDE_CONFIG_DIR='{dir}'")]
+        vec![format!("export {variable}='{dir}'")]
     }
 }
 
@@ -116,7 +131,13 @@ fn slug(email: &str) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::slug;
+    use super::{export_lines, slug};
+
+    #[test]
+    fn the_shell_line_names_the_variable_the_cli_reads() {
+        let lines = export_lines("CODEX_HOME", std::path::Path::new("/tmp/one"));
+        assert!(lines.iter().all(|line| line.contains("CODEX_HOME")));
+    }
 
     #[test]
     fn an_address_becomes_a_directory_name() {

@@ -247,8 +247,18 @@ pub fn run(opts: &Options) -> i32 {
 
     say("", Color::Plain);
     say(&format!("kebacc {version} is installed."), Color::Green);
-    say("  kebacc add -claude|-codex|-ag", Color::Dim);
-    say("  kebacc list      every pool, or list -ag", Color::Dim);
+    let flags: Vec<&str> = crate::branch::BRANCHES
+        .iter()
+        .map(|branch| branch.flag)
+        .collect();
+    say(&format!("  kebacc add {}", flags.join("|")), Color::Dim);
+    say(
+        &format!(
+            "  kebacc list      every pool, or list {}",
+            flags.last().copied().unwrap_or("-claude")
+        ),
+        Color::Dim,
+    );
     say("  kebacc doctor    check everything", Color::Dim);
     0
 }

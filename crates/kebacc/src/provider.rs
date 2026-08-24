@@ -393,7 +393,13 @@ fn branch_home(branch: &branch::Branch) -> PathBuf {
         return claude_config_dir();
     }
     match std::env::var_os(branch.home_env) {
-        Some(dir) if !dir.is_empty() => PathBuf::from(dir),
+        Some(dir) if !dir.is_empty() => {
+            let mut dir = PathBuf::from(dir);
+            for part in branch.home_suffix {
+                dir.push(part);
+            }
+            dir
+        }
         _ => {
             let mut dir = home();
             for part in branch.home_default {

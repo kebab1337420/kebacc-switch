@@ -84,15 +84,7 @@ fn dispatch(args: &[String]) -> i32 {
         println!("kebacc {}", env!("CARGO_PKG_VERSION"));
         return 0;
     }
-    let command = match command.as_str() {
-        "ls" => "list",
-        "select" | "use" => "switch",
-        "rm" => "remove",
-        "save" => "add",
-        "check" => "doctor",
-        "upgrade" | "selfupdate" => "update",
-        other => other,
-    };
+    let command = canonical(command.as_str());
     if !matches!(
         command,
         "add"
@@ -168,6 +160,13 @@ fn dispatch(args: &[String]) -> i32 {
             return 64;
         }
     };
+
+    if !options.hook {
+        if let Some(problem) = misplaced(command, &options.given) {
+            say(&problem, Color::Red);
+            return 64;
+        }
+    }
 
     match command {
         "install" => return cmd::install::run(&options),
@@ -294,6 +293,7 @@ fn parse(tokens: &[String]) -> Result<Options, String> {
             .trim_start_matches('-')
             .replace(['-', '_'], "")
             .to_lowercase();
+        options.given.push(name.clone());
         if let Some(pool) = parse_pool_name(&name) {
             if !matches!(name.as_str(), "provider" | "p") {
                 options.wanted.apply_name(pool);
@@ -376,6 +376,72 @@ fn parse(tokens: &[String]) -> Result<Options, String> {
     Ok(options)
 }
 
+fn canonical(command: &str) -> &str {
+    match command {
+        "ls" => "list",
+        "select" => "switch",
+        "rm" => "remove",
+        "save" => "add",
+        "check" => "doctor",
+        "upgrade" | "selfupdate" => "update",
+        other => other,
+    }
+}
+
+const SCOPED: &[(&str, &[&str])] = &[
+    ("Dir", &["use"]),
+    ("ToolsDir", &["install", "uninstall", "update"]),
+    ("Binary", &["install", "update"]),
+    ("NoProfileEdit", &["install", "uninstall", "update"]),
+    ("StatusLine", &["install", "update"]),
+    ("NoStatusLine", &["install", "update"]),
+    ("AutoSwitch", &["install", "update"]),
+    ("AutoUpdate", &["install", "update"]),
+    ("NoAutoUpdate", &["install", "update"]),
+    ("Pool", &["uninstall"]),
+    ("Countdown", &["list"]),
+    ("Merge", &["arm"]),
+    ("Drop", &["arm"]),
+    ("Rank", &["set"]),
+    ("Reserve", &["set"]),
+    ("NoReserve", &["set"]),
+    ("OnSwitch", &["set"]),
+    ("FiveHour", &["set"]),
+    ("SevenDay", &["set"]),
+    ("Protect", &["doctor"]),
+    ("Adopt", &["doctor"]),
+    ("Rollback", &["doctor"]),
+    ("Renew", &["doctor"]),
+    ("Clean", &["doctor"]),
+    ("Fix", &["doctor"]),
+];
+
+fn misplaced(command: &str, given: &[String]) -> Option<String> {
+    fn flag(name: &str) -> &str {
+        match name {
+            "5h" => "fivehour",
+            "7d" => "sevenday",
+            other => other,
+        }
+    }
+    given.iter().find_map(|name| {
+        let name = flag(name);
+        let (option, commands) = SCOPED
+            .iter()
+            .find(|(option, _)| option.to_lowercase() == name)?;
+        if commands.contains(&command) {
+            return None;
+        }
+        Some(format!(
+            "-{option} means nothing to '{command}'. It belongs to {}.",
+            match commands.split_last() {
+                Some((last, rest)) if !rest.is_empty() => format!("{} or {last}", rest.join(", ")),
+                _ => commands.join(""),
+            }
+        ))
+    })
+}
+
 fn cap_value(given: Option<String>, flag: &str) -> Result<f64, String> {
     let given = given.ok_or(format!("{flag} needs a percentage, or 'off'."))?;
     if given.trim().eq_ignore_ascii_case("off") {
@@ -396,6 +462,22 @@ fn waits_on_the_terminal(command: &str, options: &Options) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn an_option_from_another_command_is_refused() {
+        let given = vec!["dir".to_string()];
+        assert!(misplaced("install", &given).is_some());
+        assert!(misplaced("use", &given).is_none());
+        assert!(misplaced("doctor", &["quiet".to_string()]).is_none());
+        assert!(misplaced("set", &["5h".to_string()]).is_none());
+    }
+
+    #[test]
+    fn a_session_directory_is_not_a_switch() {
+        assert_eq!(canonical("use"), "use");
+        assert_eq!(canonical("select"), "switch");
+        assert_eq!(canonical("ls"), "list");
+    }
 
     #[test]
     fn no_args_is_help() {

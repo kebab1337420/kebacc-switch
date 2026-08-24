@@ -57,6 +57,7 @@ pub struct Options {
     pub dir: Option<String>,
     pub five_hour: Option<f64>,
     pub seven_day: Option<f64>,
+    pub given: Vec<String>,
 }
 
 pub fn current<'a>(provider: &Provider, pool: &'a [Entry]) -> Option<&'a Entry> {

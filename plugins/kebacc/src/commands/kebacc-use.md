@@ -1,10 +1,10 @@
 ---
 description: Give a terminal a session directory of its own, on one saved account
 allowed-tools: Bash(~/.claude-tools/kebacc:*), Bash(~/.claude-tools/kebacc.exe:*)
-argument-hint: "-claude|-codex|-ag [-Email you@example.com] [-Dir <path>]"
+argument-hint: "-claude|-codex|-ag|-grok [-Email you@example.com] [-Dir <path>]"
 ---
 
-Run `~/.claude-tools/kebacc`, or `~/.claude-tools/kebacc.exe` on Windows. This one needs a pool named: `-claude`, `-codex` or `-ag`.
+Run `~/.claude-tools/kebacc`, or `~/.claude-tools/kebacc.exe` on Windows. This one needs a pool named: `-claude`, `-codex`, `-ag` or `-grok`.
 
 ```
 ~/.claude-tools/kebacc use $ARGUMENTS

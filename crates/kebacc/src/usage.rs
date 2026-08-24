@@ -220,6 +220,10 @@ pub fn access_token(provider: &Provider, creds_raw: Option<&str>) -> Option<Stri
             let creds: Value = serde_json::from_str(creds_raw?).ok()?;
             paths.iter().find_map(|path| token_at(&creds, path))
         }
+        Token::Search(field) => {
+            let creds: Value = serde_json::from_str(creds_raw?).ok()?;
+            deep_str(&creds, field)
+        }
     }
 }
 
@@ -230,6 +234,17 @@ fn token_at(creds: &Value, path: &[&str]) -> Option<String> {
         here = here.get(step).filter(|value| !value.is_null())?;
     }
     jsonio::str_of(here, last)
+}
+
+pub fn deep_str(value: &Value, field: &str) -> Option<String> {
+    if let Some(found) = jsonio::str_of(value, field) {
+        return Some(found);
+    }
+    match value {
+        Value::Object(members) => members.values().find_map(|inner| deep_str(inner, field)),
+        Value::Array(items) => items.iter().find_map(|inner| deep_str(inner, field)),
+        _ => None,
+    }
 }
 
 pub fn agent() -> ureq::Agent {
@@ -277,6 +292,7 @@ fn get_json(url: &str, headers: &[(&str, &str)]) -> Option<Value> {
 
 pub fn fetch(provider: &Provider, token: Option<&str>) -> Option<Usage> {
     match provider.id.branch().quota {
+        Quota::None => None,
         Quota::Antigravity => fetch_antigravity(token),
         Quota::Get {
             url,

@@ -10,13 +10,15 @@ pub enum ProviderId {
     Claude,
     Codex,
     Antigravity,
+    Grok,
 }
 
 impl ProviderId {
-    pub const ALL: [ProviderId; 3] = [
+    pub const ALL: [ProviderId; 4] = [
         ProviderId::Claude,
         ProviderId::Codex,
         ProviderId::Antigravity,
+        ProviderId::Grok,
     ];
 
     pub fn index(self) -> usize {
@@ -24,6 +26,7 @@ impl ProviderId {
             ProviderId::Claude => 0,
             ProviderId::Codex => 1,
             ProviderId::Antigravity => 2,
+            ProviderId::Grok => 3,
         }
     }
 
@@ -367,6 +370,10 @@ pub fn newest(paths: &[PathBuf]) -> Option<PathBuf> {
 pub fn spec(id: ProviderId) -> Provider {
     let branch = branch::of(id);
     let dir = branch_home(branch);
+    let cred = match branch.cred_path_env.and_then(std::env::var_os) {
+        Some(path) if !path.is_empty() => PathBuf::from(path),
+        _ => dir.join(branch.cred_file),
+    };
     let config_candidates = branch
         .config_files
         .iter()
@@ -380,7 +387,7 @@ pub fn spec(id: ProviderId) -> Provider {
         label: branch.label,
         cli: branch.cli,
         store: store_dir(branch.store_env, branch.store_default),
-        cred_candidates: vec![dir.join(branch.cred_file)],
+        cred_candidates: vec![cred],
         config_candidates,
         cred_label: branch.cred_label,
         uses_keychain: branch.keychain_on_macos && cfg!(target_os = "macos"),
@@ -579,9 +586,9 @@ mod tests {
     #[test]
     fn naming_every_pool_collapses_to_all() {
         let mut wanted = Wanted::unspecified();
-        wanted.add(ProviderId::Claude);
-        wanted.add(ProviderId::Codex);
-        wanted.add(ProviderId::Antigravity);
+        for id in ProviderId::ALL {
+            wanted.add(id);
+        }
         assert!(wanted.is_all());
         assert!(wanted.flags().is_empty());
     }

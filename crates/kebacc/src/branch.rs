@@ -7,6 +7,7 @@ pub struct Branch {
     pub seal_account: &'static str,
     pub home_env: &'static str,
     pub home_default: &'static [&'static str],
+    pub cred_path_env: Option<&'static str>,
     pub store_env: &'static str,
     pub store_default: &'static str,
     pub cred_file: &'static str,
@@ -28,11 +29,13 @@ pub enum ConfigAt {
 
 pub enum Token {
     Paths(&'static [&'static [&'static str]]),
+    Search(&'static str),
     Antigravity,
 }
 
 pub enum Identity {
     ConfigMember(&'static str),
+    Search,
     Codex,
     Antigravity,
 }
@@ -47,6 +50,7 @@ pub enum Quota {
         not_for_prefix: Option<&'static str>,
     },
     Antigravity,
+    None,
 }
 
 pub const BRANCHES: &[Branch] = &[
@@ -59,6 +63,7 @@ pub const BRANCHES: &[Branch] = &[
         seal_account: "kebacc-switch",
         home_env: "CLAUDE_CONFIG_DIR",
         home_default: &[".claude"],
+        cred_path_env: None,
         store_env: "KEBACC_SWITCH_ACCOUNTS",
         store_default: ".kebacc-switch-accounts",
         cred_file: ".credentials.json",
@@ -94,6 +99,7 @@ pub const BRANCHES: &[Branch] = &[
         seal_account: "kebacc-switch",
         home_env: "CODEX_HOME",
         home_default: &[".codex"],
+        cred_path_env: None,
         store_env: "KEBACC_SWITCH_CODEX_ACCOUNTS",
         store_default: ".kebacc-switch-codex-accounts",
         cred_file: "auth.json",
@@ -123,6 +129,7 @@ pub const BRANCHES: &[Branch] = &[
         seal_account: "kebacc-antigravity",
         home_env: "ANTIGRAVITY_HOME",
         home_default: &[".gemini", "antigravity-cli"],
+        cred_path_env: None,
         store_env: "KEBACC_SWITCH_ANTIGRAVITY_ACCOUNTS",
         store_default: ".kebacc-switch-antigravity-accounts",
         cred_file: "antigravity-oauth-token",
@@ -135,6 +142,29 @@ pub const BRANCHES: &[Branch] = &[
         token: Token::Antigravity,
         identity: Identity::Antigravity,
         quota: Quota::Antigravity,
+    },
+    Branch {
+        key: "grok",
+        aliases: &["xai", "grokcli"],
+        label: "Grok",
+        cli: "grok",
+        flag: "-grok",
+        seal_account: "kebacc-grok",
+        home_env: "GROK_HOME",
+        home_default: &[".grok"],
+        cred_path_env: Some("GROK_AUTH_PATH"),
+        store_env: "KEBACC_SWITCH_GROK_ACCOUNTS",
+        store_default: ".kebacc-switch-grok-accounts",
+        cred_file: "auth.json",
+        cred_label: "~/.grok/auth.json",
+        config_files: &[],
+        keychain_service: None,
+        keychain_on_macos: false,
+        uses_keyring: false,
+        renew: false,
+        token: Token::Search("access_token"),
+        identity: Identity::Search,
+        quota: Quota::None,
     },
 ];
 

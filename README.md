@@ -16,8 +16,8 @@ the one you are on runs out of quota. Built for
 
 ## What it is
 
-One Rust binary and one Claude Code plugin. Claude Code, Codex and Antigravity
-each keep their own pool of sealed logins. You install once, then name the pool
+One Rust binary and one Claude Code plugin. Claude Code, Codex, Antigravity and
+Grok each keep their own pool of sealed logins. You install once, then name the pool
 with a flag:
 
 ```
@@ -29,8 +29,9 @@ kebacc switch -codex
 kebacc add -ag
 ```
 
-Full name or short: `-claude`/`-cc`, `-codex`/`-cx`, `-antigravity`/`-ag`, `-all`.
-`list`, `auto` and `doctor` with no flag mean every pool. `add`, `switch` and
+Full name or short: `-claude`/`-cc`, `-codex`/`-cx`, `-antigravity`/`-ag`, `-grok`, `-all`.
+Grok publishes no usage of its own, so `auto` declines that pool and it is
+switched by hand. `list`, `auto` and `doctor` with no flag mean every pool. `add`, `switch` and
 `remove` need one. Uninstall takes the binary and the slash commands. The saved
 logins stay until you pass `-Pool`. An install or update rewrites leftover
 `-Provider` hooks and sweeps the old per-pool slash commands.
@@ -146,7 +147,7 @@ kebacc refresh -codex                   # re-read that pool, print nothing
 kebacc update
 ```
 
-`-claude`/`-cc`, `-codex`/`-cx`, `-antigravity`/`-ag`, `-all`. No flag on list,
+`-claude`/`-cc`, `-codex`/`-cx`, `-antigravity`/`-ag`, `-grok`, `-all`. No flag on list,
 auto, doctor, watch and refresh means every pool. add, switch and remove need
 one.
 

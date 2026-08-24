@@ -133,6 +133,11 @@ fn read_identity(provider: &Provider) -> Option<Value> {
             let creds: Value = serde_json::from_str(&raw).ok()?;
             antigravity_identity(&creds)
         }
+        Identity::Search => {
+            let raw = creds_raw(provider)?;
+            let creds: Value = serde_json::from_str(&raw).ok()?;
+            searched_identity(&creds)
+        }
     }
 }
 
@@ -194,6 +199,26 @@ fn email_from_pool(refresh: &str) -> Option<String> {
             .and_then(|account| jsonio::str_of(&account, "emailAddress"))
             .or_else(|| jsonio::str_of(snapshot, "email"))
     })
+}
+
+pub fn searched_identity(creds: &Value) -> Option<Value> {
+    let email = crate::usage::deep_str(creds, "email")
+        .or_else(|| crate::usage::deep_str(creds, "user_email"))
+        .or_else(|| {
+            crate::usage::deep_str(creds, "id_token")
+                .and_then(|token| jsonio::jwt_payload(&token))
+                .and_then(|claims| jsonio::str_of(&claims, "email"))
+        });
+    let uuid = crate::usage::deep_str(creds, "user_id")
+        .or_else(|| crate::usage::deep_str(creds, "account_id"))
+        .or_else(|| {
+            crate::usage::deep_str(creds, "access_token")
+                .map(|token| crate::pool::short_hash(&token))
+        });
+    if email.is_none() && uuid.is_none() {
+        return None;
+    }
+    Some(json!({ "emailAddress": email, "accountUuid": uuid }))
 }
 
 pub fn set_identity(provider: &Provider, identity: &Value) {

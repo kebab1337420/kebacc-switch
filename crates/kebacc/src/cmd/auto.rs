@@ -25,6 +25,17 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
         }
     };
 
+    if matches!(provider.id.branch().quota, crate::branch::Quota::None) {
+        note(
+            &format!(
+                "{} publishes no usage, so there is nothing to switch on. Switch it by hand.",
+                provider.label
+            ),
+            Color::Dim,
+        );
+        return 30;
+    }
+
     let pool = Pool::new(provider).entries();
     if pool.len() < 2 {
         note(

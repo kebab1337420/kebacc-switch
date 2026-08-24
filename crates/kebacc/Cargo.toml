@@ -1,6 +1,6 @@
 [package]
 name = "kebacc"
-version = "1.0.1"
+version = "2.0.0"
 description = "Several Claude, Codex and Antigravity logins on one machine, and one command to move between them"
 license = "MIT"
 edition = "2021"

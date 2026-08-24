@@ -14,7 +14,11 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
         return 1;
     }
     let current = super::current(provider, &entries);
-    let Some(entry) = super::switch::pick(&entries, current, opts.email.as_deref()) else {
+    let entry = match (entries.len(), opts.email.as_deref()) {
+        (1, None) => Some(&entries[0]),
+        _ => super::switch::pick(&entries, current, opts.email.as_deref()),
+    };
+    let Some(entry) = entry else {
         return 1;
     };
     let Some(creds) = entry.creds.as_deref() else {

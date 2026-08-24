@@ -25,11 +25,20 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
     };
 
     let identity = live::identity(provider);
-    let email = opts.email.clone().or_else(|| {
-        identity
-            .as_ref()
-            .and_then(|id| jsonio::str_of(id, "emailAddress"))
-    });
+    let email = opts
+        .email
+        .clone()
+        .or_else(|| {
+            identity
+                .as_ref()
+                .and_then(|id| jsonio::str_of(id, "emailAddress"))
+        })
+        .or_else(|| {
+            identity
+                .as_ref()
+                .and_then(|id| jsonio::str_of(id, "accountUuid"))
+                .map(|uuid| format!("{}-{uuid}", provider.cli))
+        });
     let Some(email) = email.filter(|e| !e.is_empty()) else {
         say("Could not work out which account this is.", Color::Red);
         say("Pass one: kebacc add -Email you@example.com", Color::Dim);

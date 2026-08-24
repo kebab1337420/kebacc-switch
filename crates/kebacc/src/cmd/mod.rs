@@ -62,8 +62,17 @@ pub struct Options {
 
 pub fn current<'a>(provider: &Provider, pool: &'a [Entry]) -> Option<&'a Entry> {
     let live = live::identity(provider)?;
-    let email = crate::jsonio::str_of(&live, "emailAddress")?.to_lowercase();
-    pool.iter().find(|e| e.email.to_lowercase() == email)
+    if let Some(email) = crate::jsonio::str_of(&live, "emailAddress") {
+        let email = email.to_lowercase();
+        return pool.iter().find(|e| e.email.to_lowercase() == email);
+    }
+    let uuid = crate::jsonio::str_of(&live, "accountUuid")?;
+    pool.iter().find(|e| {
+        e.identity
+            .as_ref()
+            .and_then(|id| crate::jsonio::str_of(id, "accountUuid"))
+            .is_some_and(|saved| saved == uuid)
+    })
 }
 
 pub fn chosen_index(answer: &str, count: usize) -> Option<usize> {

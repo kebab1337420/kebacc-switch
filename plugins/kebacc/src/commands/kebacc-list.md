@@ -1,10 +1,10 @@
 ---
 description: Saved accounts, fresh numbers and time to reset
 allowed-tools: Bash(~/.claude-tools/kebacc:*), Bash(~/.claude-tools/kebacc.exe:*)
-argument-hint: "[-ag|-claude|-codex|-grok|-all]"
+argument-hint: "[-ag|-claude|-codex|-grok|-opencode|-all]"
 ---
 
-Run `~/.claude-tools/kebacc`, or `~/.claude-tools/kebacc.exe` on Windows. Pass the argument through as pool flags (`-ag`, `-claude`, `-codex`, `-grok`, `-all`). No argument lists every pool.
+Run `~/.claude-tools/kebacc`, or `~/.claude-tools/kebacc.exe` on Windows. Pass the argument through as pool flags (`-ag`, `-claude`, `-codex`, `-grok`, `-opencode`, `-all`). No argument lists every pool.
 
 ```
 ~/.claude-tools/kebacc list -Refresh -Countdown $ARGUMENTS

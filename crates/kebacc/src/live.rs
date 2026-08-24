@@ -119,6 +119,7 @@ pub fn identity(provider: &Provider) -> Option<Value> {
 
 fn read_identity(provider: &Provider) -> Option<Value> {
     match provider.id.branch().identity {
+        Identity::None => None,
         Identity::ConfigMember(member) => {
             let config = jsonio::read(&provider.config_file())?;
             jsonio::obj(&config, member)

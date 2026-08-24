@@ -1,10 +1,10 @@
 ---
 description: Switch to another saved account
 allowed-tools: Bash(~/.claude-tools/kebacc:*), Bash(~/.claude-tools/kebacc.exe:*)
-argument-hint: "-ag|-claude|-codex|-grok [email]"
+argument-hint: "-ag|-claude|-codex|-grok|-opencode [email]"
 ---
 
-Run `~/.claude-tools/kebacc`, or `~/.claude-tools/kebacc.exe` on Windows. The argument names the pool (`-ag`, `-claude`, `-codex`, `-grok`) and optionally an email.
+Run `~/.claude-tools/kebacc`, or `~/.claude-tools/kebacc.exe` on Windows. The argument names the pool (`-ag`, `-claude`, `-codex`, `-grok`, `-opencode`) and optionally an email.
 
 ```
 ~/.claude-tools/kebacc switch $ARGUMENTS

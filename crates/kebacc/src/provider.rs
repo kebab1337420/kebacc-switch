@@ -11,14 +11,16 @@ pub enum ProviderId {
     Codex,
     Antigravity,
     Grok,
+    OpenCode,
 }
 
 impl ProviderId {
-    pub const ALL: [ProviderId; 4] = [
+    pub const ALL: [ProviderId; 5] = [
         ProviderId::Claude,
         ProviderId::Codex,
         ProviderId::Antigravity,
         ProviderId::Grok,
+        ProviderId::OpenCode,
     ];
 
     pub fn index(self) -> usize {
@@ -27,6 +29,7 @@ impl ProviderId {
             ProviderId::Codex => 1,
             ProviderId::Antigravity => 2,
             ProviderId::Grok => 3,
+            ProviderId::OpenCode => 4,
         }
     }
 
@@ -400,7 +403,13 @@ fn branch_home(branch: &branch::Branch) -> PathBuf {
         return claude_config_dir();
     }
     match std::env::var_os(branch.home_env) {
-        Some(dir) if !dir.is_empty() => PathBuf::from(dir),
+        Some(dir) if !dir.is_empty() => {
+            let mut dir = PathBuf::from(dir);
+            for part in branch.home_suffix {
+                dir.push(part);
+            }
+            dir
+        }
         _ => {
             let mut dir = home();
             for part in branch.home_default {

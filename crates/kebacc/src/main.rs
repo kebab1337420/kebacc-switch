@@ -390,14 +390,14 @@ fn canonical(command: &str) -> &str {
 
 const SCOPED: &[(&str, &[&str])] = &[
     ("Dir", &["use"]),
-    ("ToolsDir", &["install", "uninstall", "update"]),
+    ("ToolsDir", &["install", "uninstall", "update", "reap"]),
     ("Binary", &["install", "update"]),
     ("NoProfileEdit", &["install", "uninstall", "update"]),
-    ("StatusLine", &["install", "update"]),
-    ("NoStatusLine", &["install", "update"]),
+    ("StatusLine", &["install", "update", "wire"]),
+    ("NoStatusLine", &["install", "update", "wire"]),
     ("AutoSwitch", &["install", "update"]),
-    ("AutoUpdate", &["install", "update"]),
-    ("NoAutoUpdate", &["install", "update"]),
+    ("AutoUpdate", &["install", "update", "wire"]),
+    ("NoAutoUpdate", &["install", "update", "wire"]),
     ("Pool", &["uninstall"]),
     ("Countdown", &["list"]),
     ("Merge", &["arm"]),
@@ -462,6 +462,20 @@ fn waits_on_the_terminal(command: &str, options: &Options) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn every_option_a_command_hands_itself_is_its_own() {
+        for (command, given) in [
+            ("wire", "StatusLine"),
+            ("wire", "NoStatusLine"),
+            ("wire", "AutoUpdate"),
+            ("wire", "NoAutoUpdate"),
+            ("arm", "Merge"),
+            ("reap", "ToolsDir"),
+        ] {
+            assert_eq!(misplaced(command, &[given.to_lowercase()]), None, "{given}");
+        }
+    }
 
     #[test]
     fn an_option_from_another_command_is_refused() {

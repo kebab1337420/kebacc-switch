@@ -10,13 +10,15 @@ pub enum ProviderId {
     Claude,
     Codex,
     Antigravity,
+    OpenCode,
 }
 
 impl ProviderId {
-    pub const ALL: [ProviderId; 3] = [
+    pub const ALL: [ProviderId; 4] = [
         ProviderId::Claude,
         ProviderId::Codex,
         ProviderId::Antigravity,
+        ProviderId::OpenCode,
     ];
 
     pub fn index(self) -> usize {

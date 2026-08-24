@@ -1,7 +1,7 @@
 ---
 description: Arm or disarm the auto-switch
 allowed-tools: Bash(~/.claude-tools/kebacc:*), Bash(~/.claude-tools/kebacc.exe:*)
-argument-hint: "[-ag|-claude|-codex|-all|off]"
+argument-hint: "[-ag|-claude|-codex|-opencode|-all|off]"
 ---
 
 Run `~/.claude-tools/kebacc`, or `~/.claude-tools/kebacc.exe` on Windows. Pass the argument through (`-ag`, `-claude`, `-codex`, `-all`, `off`). No argument arms every pool.

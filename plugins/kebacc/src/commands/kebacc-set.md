@@ -1,7 +1,7 @@
 ---
 description: Per-pool settings: the order auto picks from, its caps, and what runs after a switch
 allowed-tools: Bash(~/.claude-tools/kebacc:*), Bash(~/.claude-tools/kebacc.exe:*)
-argument-hint: "-claude|-codex|-ag [-Rank <n>] [-Reserve|-NoReserve] [-FiveHour <pct>] [-SevenDay <pct>] [-OnSwitch <cmd>]"
+argument-hint: "-claude|-codex|-opencode|-ag [-Rank <n>] [-Reserve|-NoReserve] [-FiveHour <pct>] [-SevenDay <pct>] [-OnSwitch <cmd>]"
 ---
 
 Run `~/.claude-tools/kebacc`, or `~/.claude-tools/kebacc.exe` on Windows. This one needs a pool named: `-claude`, `-codex` or `-ag`.

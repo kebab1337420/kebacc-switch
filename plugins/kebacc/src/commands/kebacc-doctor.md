@@ -1,7 +1,7 @@
 ---
 description: Check the install, the pools and the session hook
 allowed-tools: Bash(~/.claude-tools/kebacc:*), Bash(~/.claude-tools/kebacc.exe:*)
-argument-hint: "[-ag|-claude|-codex|-all]"
+argument-hint: "[-ag|-claude|-codex|-opencode|-all]"
 ---
 
 Run `~/.claude-tools/kebacc`, or `~/.claude-tools/kebacc.exe` on Windows. Pass the argument through as pool flags. No argument checks every pool.

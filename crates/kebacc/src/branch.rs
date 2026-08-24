@@ -15,6 +15,7 @@ pub struct Branch {
     pub keychain_service: Option<&'static str>,
     pub keychain_on_macos: bool,
     pub uses_keyring: bool,
+    pub renew: bool,
     pub token: Token,
     pub identity: Identity,
     pub quota: Quota,
@@ -69,6 +70,7 @@ pub const BRANCHES: &[Branch] = &[
         keychain_service: Some("Claude Code-credentials"),
         keychain_on_macos: true,
         uses_keyring: false,
+        renew: true,
         token: Token::Paths(&[&["claudeAiOauth", "accessToken"]]),
         identity: Identity::ConfigMember("oauthAccount"),
         quota: Quota::Get {
@@ -100,6 +102,7 @@ pub const BRANCHES: &[Branch] = &[
         keychain_service: None,
         keychain_on_macos: false,
         uses_keyring: false,
+        renew: false,
         token: Token::Paths(&[&["tokens", "access_token"], &["OPENAI_API_KEY"]]),
         identity: Identity::Codex,
         quota: Quota::Get {
@@ -128,6 +131,7 @@ pub const BRANCHES: &[Branch] = &[
         keychain_service: None,
         keychain_on_macos: false,
         uses_keyring: true,
+        renew: false,
         token: Token::Antigravity,
         identity: Identity::Antigravity,
         quota: Quota::Antigravity,

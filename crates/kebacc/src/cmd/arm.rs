@@ -27,7 +27,10 @@ pub fn run(wanted: &Wanted, quiet: bool, mode: Mode) -> i32 {
     }
     if matches!(mode, Mode::Merge | Mode::Drop) && wanted.is_unspecified() {
         say(
-            "-Merge and -Drop need a pool: -claude, -codex or -ag.",
+            &format!(
+                "-Merge and -Drop need a pool: {}.",
+                crate::provider::pool_flags()
+            ),
             Color::Red,
         );
         return 64;

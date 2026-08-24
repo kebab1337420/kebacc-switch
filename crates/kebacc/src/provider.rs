@@ -326,6 +326,14 @@ pub fn session_dir() -> PathBuf {
     .clone()
 }
 
+pub fn pool_flags() -> String {
+    let flags: Vec<&str> = branch::BRANCHES.iter().map(|branch| branch.flag).collect();
+    match flags.split_last() {
+        Some((last, rest)) if !rest.is_empty() => format!("{} or {last}", rest.join(", ")),
+        _ => flags.join(""),
+    }
+}
+
 pub fn parse_pool_name(raw: &str) -> Option<PoolName> {
     let key = raw
         .trim()

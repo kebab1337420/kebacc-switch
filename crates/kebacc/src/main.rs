@@ -221,7 +221,10 @@ fn dispatch(args: &[String]) -> i32 {
 
     if matches!(command, "add" | "switch" | "remove" | "set" | "use") {
         let Some(id) = options.wanted.exactly_one() else {
-            say("Name a pool: -claude, -codex or -ag.", Color::Red);
+            say(
+                &format!("Name a pool: {}.", provider::pool_flags()),
+                Color::Red,
+            );
             return 64;
         };
         bind_seal(id);
@@ -280,7 +283,8 @@ fn parse(tokens: &[String]) -> Result<Options, String> {
                 Some(name) => options.wanted.apply_name(name),
                 None => {
                     return Err(format!(
-                        "Unexpected argument '{token}'. Pools are -claude, -codex, -ag."
+                        "Unexpected argument '{token}'. Pools are {}.",
+                        provider::pool_flags()
                     ))
                 }
             }
@@ -305,12 +309,14 @@ fn parse(tokens: &[String]) -> Result<Options, String> {
         };
         match name.as_str() {
             "provider" | "p" => {
-                let given = value().ok_or("Name a pool: -claude, -codex or -ag.")?;
+                let given =
+                    value().ok_or_else(|| format!("Name a pool: {}.", provider::pool_flags()))?;
                 match parse_pool_name(&given) {
                     Some(pool) => options.wanted.apply_name(pool),
                     None => {
                         return Err(format!(
-                            "Unknown pool '{given}'. Use -claude, -codex, -ag or -all."
+                            "Unknown pool '{given}'. Use {} or -all.",
+                            provider::pool_flags()
                         ))
                     }
                 }

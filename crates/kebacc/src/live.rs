@@ -521,7 +521,12 @@ pub fn activate(provider: &Provider, entry: &crate::pool::Entry) -> Result<Activ
 
         let mut warning = None;
         let mut renewed = false;
-        let creds = match crate::oauth::renew_if_stale(creds) {
+        let renewal = if provider.id.branch().renew {
+            crate::oauth::renew_if_stale(creds)
+        } else {
+            crate::oauth::Renewal::Fresh
+        };
+        let creds = match renewal {
             crate::oauth::Renewal::Fresh => creds.to_string(),
             crate::oauth::Renewal::Renewed(fresh) => {
                 renewed = true;

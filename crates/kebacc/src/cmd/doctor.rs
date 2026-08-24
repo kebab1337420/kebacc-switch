@@ -204,7 +204,9 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
             report.good("sealed and stamped");
         }
         if let Some(raw) = entry.creds.as_deref() {
-            token_report(provider, &entry, raw, opts.renew, &mut report);
+            if provider.id.branch().renew {
+                token_report(provider, &entry, raw, opts.renew, &mut report);
+            }
         }
     }
 

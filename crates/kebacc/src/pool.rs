@@ -4,7 +4,7 @@ use crate::seal;
 use crate::term::Color;
 use base64::engine::general_purpose::STANDARD as B64;
 use base64::Engine;
-use hmac::{Hmac, Mac};
+use hmac::{Hmac, KeyInit, Mac};
 use serde_json::{json, Map, Value};
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;

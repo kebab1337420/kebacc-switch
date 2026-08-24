@@ -15,8 +15,8 @@ serde_json = { version = "1", features = ["preserve_order"] }
 dirs = "6"
 chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 base64 = "0.23"
-sha2 = "0.10"
-hmac = "0.12"
+sha2 = "0.11"
+hmac = "0.13"
 
 # The usage endpoints, and nothing else. Blocking: this process exists to answer
 # one question and exit, so an async runtime would only add startup to it.

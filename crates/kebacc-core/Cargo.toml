@@ -10,7 +10,7 @@ publish = false
 serde_json = { version = "1", features = ["preserve_order"] }
 base64 = "0.23"
 getrandom = "0.4"
-aes-gcm = "0.10"
+aes-gcm = "0.11"
 
 [target.'cfg(windows)'.dependencies]
 windows-sys = { version = "0.61", features = [

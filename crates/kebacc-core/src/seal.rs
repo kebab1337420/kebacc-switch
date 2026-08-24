@@ -275,9 +275,10 @@ fn aes_seal(key: &[u8], plain: &[u8]) -> Option<Vec<u8>> {
 
     let cipher = Aes256Gcm::new_from_slice(key).ok()?;
     let nonce = random_bytes(12);
+    let at = Nonce::try_from(nonce.as_slice()).ok()?;
     let sealed = cipher
         .encrypt(
-            Nonce::from_slice(&nonce),
+            &at,
             Payload {
                 msg: plain,
                 aad: &[],
@@ -300,12 +301,13 @@ fn aes_open(key: &[u8], blob: &[u8]) -> Option<Vec<u8>> {
         return None;
     }
     let cipher = Aes256Gcm::new_from_slice(key).ok()?;
+    let at = Nonce::try_from(&blob[..12]).ok()?;
     let mut joined = Vec::with_capacity(blob.len() - 12);
     joined.extend_from_slice(&blob[28..]);
     joined.extend_from_slice(&blob[12..28]);
     cipher
         .decrypt(
-            Nonce::from_slice(&blob[..12]),
+            &at,
             Payload {
                 msg: &joined,
                 aad: &[],
@@ -382,6 +384,43 @@ fn dpapi_unprotect(_blob: &[u8]) -> Option<Vec<u8>> {
 
 #[cfg(test)]
 mod tests {
+    const FROZEN_KEY: [u8; 32] = [7u8; 32];
+    const FROZEN_PLAIN: &[u8] = b"a login worth keeping";
+    const FROZEN_SEALED: &str = "c99f36f1dc771a080120a4cef09859054ac372429b634cb26d06d6467e32a7b183e3cdcd605fe7dcaef21a3d2cc3738f44";
+
+    fn from_hex(text: &str) -> Vec<u8> {
+        (0..text.len())
+            .step_by(2)
+            .map(|at| u8::from_str_radix(&text[at..at + 2], 16).unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn a_sealed_login_opens_again() {
+        let blob = super::aes_seal(&FROZEN_KEY, FROZEN_PLAIN).unwrap();
+        assert_eq!(
+            super::aes_open(&FROZEN_KEY, &blob).as_deref(),
+            Some(FROZEN_PLAIN)
+        );
+    }
+
+    #[test]
+    fn a_login_sealed_by_an_older_build_still_opens() {
+        assert_eq!(
+            super::aes_open(&FROZEN_KEY, &from_hex(FROZEN_SEALED)).as_deref(),
+            Some(FROZEN_PLAIN)
+        );
+    }
+
+    #[test]
+    fn a_sealed_login_that_was_tampered_with_does_not_open() {
+        let mut blob = from_hex(FROZEN_SEALED);
+        let last = blob.len() - 1;
+        blob[last] ^= 1;
+        assert_eq!(super::aes_open(&FROZEN_KEY, &blob), None);
+        assert_eq!(super::aes_open(&[8u8; 32], &from_hex(FROZEN_SEALED)), None);
+    }
+
     use super::*;
 
     #[test]

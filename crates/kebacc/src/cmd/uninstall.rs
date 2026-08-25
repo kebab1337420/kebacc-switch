@@ -1,3 +1,4 @@
+use super::install::level;
 use super::Options;
 use crate::term::{ask, said_yes, say, Color};
 use std::path::Path;
@@ -181,15 +182,6 @@ fn collect_commands(node: &serde_json::Value, out: &mut Vec<String>) {
     }
 }
 
-fn level(text: &str) -> String {
-    let text = text.replace('\\', "/");
-    if cfg!(windows) {
-        text.to_lowercase()
-    } else {
-        text
-    }
-}
-
 fn reaper(tools: &Path) -> bool {
     let Ok(exe) = std::env::current_exe() else {
         return false;
@@ -367,10 +359,7 @@ fn profiles(tools: &Path) {
         if !super::install::has_profile_block(&existing) {
             continue;
         }
-        if !block_body(&existing)
-            .iter()
-            .any(|line| level(line).contains(&wanted))
-        {
+        if !removable(&existing, &wanted) {
             say(
                 &format!("Left the kebacc line in {} alone.", path.display()),
                 Color::Dim,
@@ -385,6 +374,22 @@ fn profiles(tools: &Path) {
             );
         }
     }
+}
+
+/// Whether this uninstall gets to take the block out. Ours, plainly. And one
+/// naming a binary that is not on the machine any more, which is nobody's:
+/// something took that binary without coming through here, and what is left is
+/// a name that fails in every new shell with nothing installed to explain it.
+fn removable(existing: &str, wanted: &str) -> bool {
+    if block_body(existing)
+        .iter()
+        .any(|line| level(line).contains(wanted))
+    {
+        return true;
+    }
+    !super::install::block_line(existing)
+        .and_then(|line| super::install::named_binary(&line))
+        .is_some_and(|named| named.is_file())
 }
 
 fn block_body(existing: &str) -> Vec<String> {
@@ -474,14 +479,23 @@ mod tests {
     }
 
     #[test]
-    fn a_path_is_levelled_to_one_spelling() {
-        let one = level("C:\\Users\\a\\.claude-tools\\kebacc.exe");
-        let two = level("c:/users/a/.claude-tools/kebacc.exe");
-        if cfg!(windows) {
-            assert_eq!(one, two);
-        } else {
-            assert!(one.contains("/kebacc.exe"));
-        }
+    fn a_block_naming_a_binary_that_is_gone_is_taken_out() {
+        let dead = format!(
+            "{}\nkebacc() {{ \"/gone/kebacc\" \"$@\"; }}\n",
+            super::super::install::PROFILE_MARKER
+        );
+        assert!(removable(&dead, "/some/other/install/kebacc"));
+    }
+
+    #[test]
+    fn a_block_naming_another_install_that_is_still_there_is_left_alone() {
+        let here = std::env::current_exe().expect("a test binary has a path");
+        let theirs = format!(
+            "{}\nkebacc() {{ \"{}\" \"$@\"; }}\n",
+            super::super::install::PROFILE_MARKER,
+            here.display()
+        );
+        assert!(!removable(&theirs, "/some/other/install/kebacc"));
     }
 
     #[test]

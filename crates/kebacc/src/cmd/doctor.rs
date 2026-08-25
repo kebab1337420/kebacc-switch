@@ -140,6 +140,7 @@ pub fn run(provider: &Provider, opts: &Options) -> i32 {
     }
 
     if provider.id == ProviderId::Claude {
+        check_profile(&mut report);
         check_settings(&mut report);
     }
 
@@ -301,6 +302,40 @@ fn install_dir() -> Option<PathBuf> {
     std::env::current_exe()
         .ok()
         .and_then(|exe| exe.parent().map(Path::to_path_buf))
+}
+
+/// A profile function beats anything on PATH, so a line naming a binary that is
+/// gone is what a shell finds first and fails on. Nothing else here would say
+/// so: the pools are fine, the settings are fine, and `kebacc` is unknown.
+fn check_profile(report: &mut Report) {
+    let mine = std::env::current_exe()
+        .ok()
+        .map(|exe| super::install::level(&exe.display().to_string()));
+    for path in super::install::profile_paths() {
+        let Ok(existing) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        match super::install::profiled(&existing) {
+            super::install::Profiled::Absent => {}
+            super::install::Profiled::Dangling(named) => report.bad(&format!(
+                "the kebacc line in {} runs {}, which is not there any more. Put it back with: kebacc install",
+                path.display(),
+                named.display()
+            )),
+            super::install::Profiled::Live(named) => {
+                let theirs = super::install::level(&named.display().to_string());
+                if mine.as_deref().is_some_and(|mine| theirs != mine) {
+                    report.warn(&format!(
+                        "the kebacc line in {} runs {}, not this binary",
+                        path.display(),
+                        named.display()
+                    ));
+                } else {
+                    report.good(&format!("kebacc is in {}", path.display()));
+                }
+            }
+        }
+    }
 }
 
 fn check_settings(report: &mut Report) {

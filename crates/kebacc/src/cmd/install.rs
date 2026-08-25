@@ -102,6 +102,14 @@ pub const PROFILE_MARKER: &str = "# kebacc account switcher";
 
 pub const LEGACY_PROFILE_MARKER: &str = "# kebacc-switch account switcher";
 
+/// Markers written by the halves this binary took over. Their binaries are in
+/// `LEGACY`, so an install deletes them, and the line left under the marker
+/// fails in every new shell with nothing installed to explain it.
+pub const RETIRED_PROFILE_MARKERS: &[&str] = &[
+    "# kebacc-antigravity account switcher",
+    "# kebacc-codex account switcher",
+];
+
 pub fn exe_name() -> String {
     format!("kebacc{}", std::env::consts::EXE_SUFFIX)
 }
@@ -377,6 +385,7 @@ fn ran(entry: &Path, args: &[&str]) -> bool {
 }
 
 fn profile(entry: &Path) {
+    sweep_retired();
     for path in profile_paths() {
         let existing = std::fs::read_to_string(&path).unwrap_or_default();
         if has_profile_block(&existing) {
@@ -412,6 +421,111 @@ pub fn has_profile_block(existing: &str) -> bool {
 pub fn is_profile_marker(line: &str) -> bool {
     let text = line.trim_start();
     text.starts_with(PROFILE_MARKER) || text.starts_with(LEGACY_PROFILE_MARKER)
+}
+
+/// One spelling for a path that may arrive with either separator, and without
+/// case on the platform that ignores it.
+pub fn level(text: &str) -> String {
+    let text = text.replace('\\', "/");
+    if cfg!(windows) {
+        text.to_lowercase()
+    } else {
+        text
+    }
+}
+
+/// What the kebacc line in a profile runs, and whether that file is still there.
+pub enum Profiled {
+    Absent,
+    Live(PathBuf),
+    Dangling(PathBuf),
+}
+
+pub fn profiled(existing: &str) -> Profiled {
+    let Some(line) = block_line(existing) else {
+        return Profiled::Absent;
+    };
+    match named_binary(&line) {
+        Some(path) if path.is_file() => Profiled::Live(path),
+        Some(path) => Profiled::Dangling(path),
+        None => Profiled::Absent,
+    }
+}
+
+/// The line under our marker: the one that names the binary.
+pub fn block_line(existing: &str) -> Option<String> {
+    line_under(existing, is_profile_marker)
+}
+
+fn line_under(existing: &str, marker: impl Fn(&str) -> bool) -> Option<String> {
+    let mut take_next = false;
+    for line in existing.lines() {
+        if take_next {
+            return Some(line.to_string());
+        }
+        if marker(line) {
+            take_next = true;
+        }
+    }
+    None
+}
+
+/// The path a function line runs. Every spelling of that line quotes it.
+pub fn named_binary(line: &str) -> Option<PathBuf> {
+    let start = line.find('"')? + 1;
+    let rest = line.get(start..)?;
+    let end = rest.find('"')?;
+    Some(PathBuf::from(rest.get(..end)?))
+}
+
+/// Take out the block a retired half left behind, once the binary it names is
+/// gone. One still naming a binary that exists belongs to that install, and
+/// this command does not get to remove it.
+fn sweep_retired() {
+    for path in profile_paths() {
+        let Ok(existing) = std::fs::read_to_string(&path) else {
+            continue;
+        };
+        let mut kept = existing.clone();
+        for marker in RETIRED_PROFILE_MARKERS {
+            let Some(line) = line_under(&kept, |line| line.trim_start().starts_with(marker)) else {
+                continue;
+            };
+            if named_binary(&line).is_some_and(|named| named.is_file()) {
+                continue;
+            }
+            kept = without_marker(&kept, marker);
+            say(
+                &format!(
+                    "Removed a dead switcher line from {}: it ran {}",
+                    path.display(),
+                    named_binary(&line).unwrap_or_default().display()
+                ),
+                Color::Green,
+            );
+        }
+        if kept != existing {
+            let _ = std::fs::write(&path, &kept);
+        }
+    }
+}
+
+fn without_marker(existing: &str, marker: &str) -> String {
+    let mut out = String::new();
+    let mut drop_next = false;
+    for line in existing.lines() {
+        if drop_next {
+            drop_next = false;
+            continue;
+        }
+        if line.trim_start().starts_with(marker) {
+            drop_next = true;
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
 }
 
 fn repoint(existing: &str, entry: &Path, path: &Path) -> String {
@@ -556,5 +670,75 @@ mod tests {
         assert!(!after.contains(LEGACY_PROFILE_MARKER));
         assert!(after.contains("kebacc() { \"/new/kebacc\" \"$@\"; }"));
         assert!(!after.contains("kebacc-switch()"));
+    }
+
+    #[test]
+    fn the_path_comes_out_of_either_spelling_of_the_line() {
+        let powershell = function_line(Path::new("C:/tools/kebacc.exe"), Path::new("p.ps1"));
+        assert_eq!(
+            named_binary(&powershell),
+            Some(PathBuf::from("C:/tools/kebacc.exe"))
+        );
+        let posix = function_line(Path::new("/tools/kebacc"), Path::new(".zshrc"));
+        assert_eq!(named_binary(&posix), Some(PathBuf::from("/tools/kebacc")));
+    }
+
+    #[test]
+    fn a_line_naming_a_binary_that_is_gone_reads_as_dangling() {
+        let profile =
+            format!("keep me\n{PROFILE_MARKER}\nkebacc() {{ \"/gone/kebacc\" \"$@\"; }}\n");
+        assert!(matches!(profiled(&profile), Profiled::Dangling(_)));
+    }
+
+    #[test]
+    fn a_line_naming_a_binary_that_is_there_reads_as_live() {
+        let here = std::env::current_exe().expect("a test binary has a path");
+        let profile = format!(
+            "{PROFILE_MARKER}\nkebacc() {{ \"{}\" \"$@\"; }}\n",
+            here.display()
+        );
+        assert!(matches!(profiled(&profile), Profiled::Live(_)));
+    }
+
+    #[test]
+    fn a_profile_without_the_marker_reads_as_absent() {
+        assert!(matches!(profiled("alias ll='ls -l'\n"), Profiled::Absent));
+    }
+
+    #[test]
+    fn a_path_is_levelled_to_one_spelling() {
+        let one = level("C:\\Users\\a\\.claude-tools\\kebacc.exe");
+        let two = level("c:/users/a/.claude-tools/kebacc.exe");
+        if cfg!(windows) {
+            assert_eq!(one, two);
+        } else {
+            assert!(one.contains("/kebacc.exe"));
+        }
+    }
+
+    #[test]
+    fn a_retired_block_naming_a_binary_that_is_gone_goes() {
+        let marker = RETIRED_PROFILE_MARKERS[0];
+        let before = format!(
+            "keep me\n{marker}\nkebacc-antigravity() {{ \"/gone/kebacc-antigravity\" \"$@\"; }}\nkeep me too\n"
+        );
+        let after = without_marker(&before, marker);
+        assert!(after.contains("keep me\n"));
+        assert!(after.contains("keep me too"));
+        assert!(!after.contains(marker));
+        assert!(!after.contains("kebacc-antigravity()"));
+    }
+
+    #[test]
+    fn every_retired_marker_belongs_to_a_binary_the_sweep_deletes() {
+        for marker in RETIRED_PROFILE_MARKERS {
+            let name = marker
+                .trim_start_matches("# ")
+                .trim_end_matches(" account switcher");
+            assert!(
+                LEGACY.contains(&name),
+                "{name} keeps a profile line but is never deleted"
+            );
+        }
     }
 }
